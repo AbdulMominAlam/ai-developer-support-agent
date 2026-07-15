@@ -1,0 +1,26 @@
+{
+  "ACC-1001": {
+    "name": "Aisha Khan",
+    "email": "aisha@example.com",
+    "plan": "Pro",
+    "status": "Active",
+    "monthly_api_calls_used": 8200,
+    "monthly_api_call_limit": 10000
+  },
+  "ACC-1002": {
+    "name": "Bilal Ahmed",
+    "email": "bilal@example.com",
+    "plan": "Free",
+    "status": "Active",
+    "monthly_api_calls_used": 420,
+    "monthly_api_call_limit": 500
+  },
+  "ACC-1003": {
+    "name": "Sara Malik",
+    "email": "sara@example.com",
+    "plan": "Team",
+    "status": "Suspended",
+    "monthly_api_calls_used": 18400,
+    "monthly_api_call_limit": 20000
+  }
+}
