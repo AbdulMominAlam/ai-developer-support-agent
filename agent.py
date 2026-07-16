@@ -6,12 +6,13 @@ from openai import AsyncOpenAI
 from config import MODEL_NAME, OPENAI_API_KEY
 from rag.answer import answer_question
 from clients.mcp_client import call_mcp_tool
+from clients.github_mcp_client import call_github_mcp_tool
 
 
 # Create an asynchronous OpenAI client.
 #
-# We use AsyncOpenAI instead of OpenAI because the rest
-# of our agent and MCP flow is now asynchronous.
+# We use AsyncOpenAI because the rest of our agent,
+# MCP clients, and tool flow are asynchronous.
 client = AsyncOpenAI(
     api_key=OPENAI_API_KEY
 )
@@ -29,13 +30,21 @@ You can:
 - Search official Supabase documentation.
 - Look up developer account information.
 - Create developer support tickets.
+- Search GitHub for repositories.
 
 Tool rules:
 - Use search_documentation for Supabase documentation questions.
 - Use get_account for account-specific information.
 - Use create_support_ticket only when the user clearly asks to
   create, open, or submit a support ticket.
-- Never invent account information or ticket information.
+- Use search_github_repositories when the user wants to search
+  GitHub for repositories or projects.
+- Use list_github_issues when the user asks to view issues
+  in a specific GitHub repository.
+- Use read_github_file when the user asks to read a file
+  or directory from a GitHub repository.
+- Never invent account information, ticket information,
+  documentation details, or GitHub repository results.
 - Use information from earlier messages when the user says things
   such as "it", "that account", "the same account", or "for them".
 
@@ -135,6 +144,109 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "type": "function",
+        "name": "search_github_repositories",
+        "description": (
+            "Search GitHub for repositories. "
+            "Use this when the user asks to find a repository, "
+            "search GitHub for projects, or look for repositories "
+            "by name, description, or topic."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "The GitHub repository search query, "
+                        "such as 'AI developer support agent'."
+                    ),
+                }
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "list_github_issues",
+        "description": (
+            "List issues from a GitHub repository. "
+            "Use this when the user asks to see open or closed issues "
+            "for a specific repository."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": (
+                        "The GitHub username or organization "
+                        "that owns the repository."
+                    ),
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "The repository name.",
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "OPEN",
+                        "CLOSED",
+                    ],
+                    "description": (
+                        "Optional issue state filter. "
+                        "Use OPEN for open issues or CLOSED for closed issues."
+                    ),
+                },
+            },
+            "required": [
+                "owner",
+                "repo",
+            ],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "read_github_file",
+        "description": (
+            "Read a file or directory from a GitHub repository. "
+            "Use this when the user asks to view a README, source file, "
+            "configuration file, or directory contents."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": (
+                        "The GitHub username or organization "
+                        "that owns the repository."
+                    ),
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "The repository name.",
+                },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "The path to the file or directory, "
+                        "such as README.md or src/main.py."
+                    ),
+                },
+            },
+            "required": [
+                "owner",
+                "repo",
+                "path",
+            ],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -144,11 +256,11 @@ async def run_tool(tool_name, arguments):
 
     Documentation questions go through our RAG pipeline.
 
-    Account lookup and ticket creation go through:
-        MCP client
-        -> MCP server
-        -> backend function
-        -> JSON data
+    Account lookup and ticket creation go through
+    our custom Developer Support MCP Server.
+
+    GitHub repository searches go through
+    GitHub's official MCP Server.
     """
 
     if tool_name == "search_documentation":
@@ -163,6 +275,9 @@ async def run_tool(tool_name, arguments):
         )
 
     if tool_name == "get_account":
+
+        # Call the get_account tool through
+        # our custom Developer Support MCP Server.
         return await call_mcp_tool(
             "get_account",
             {
@@ -171,12 +286,62 @@ async def run_tool(tool_name, arguments):
         )
 
     if tool_name == "create_support_ticket":
+
+        # Call the ticket creation tool through
+        # our custom Developer Support MCP Server.
         return await call_mcp_tool(
             "create_support_ticket",
             {
                 "account_id": arguments["account_id"],
                 "category": arguments["category"],
                 "description": arguments["description"],
+            },
+        )
+
+    if tool_name == "search_github_repositories":
+
+        # GPT knows this tool by the application-level name:
+        #
+        # search_github_repositories
+        #
+        # The official GitHub MCP Server exposes the tool as:
+        #
+        # search_repositories
+        #
+        # This block maps our tool name to GitHub's tool name.
+        return await call_github_mcp_tool(
+            "search_repositories",
+            {
+                "query": arguments["query"],
+            },
+        )
+
+    if tool_name == "list_github_issues":
+
+        github_arguments = {
+            "owner": arguments["owner"],
+            "repo": arguments["repo"],
+            "perPage": 10  #only return 10 issues and not all
+        }
+
+    # Only include state if GPT supplied it.
+        if "state" in arguments:
+            github_arguments["state"] = arguments["state"]
+
+        return await call_github_mcp_tool(
+            "list_issues",
+            github_arguments,
+        )
+
+
+    if tool_name == "read_github_file":
+
+        return await call_github_mcp_tool(
+            "get_file_contents",
+            {
+                "owner": arguments["owner"],
+                "repo": arguments["repo"],
+                "path": arguments["path"],
             },
         )
 
@@ -188,15 +353,16 @@ async def run_tool(tool_name, arguments):
     }
 
 
+
 def convert_tool_result_to_text(tool_result):
     """
     Convert a tool result into text that can be sent to GPT.
 
-    MCP tools return Python dictionaries.
+    MCP tools usually return Python dictionaries or lists.
     The RAG function returns a normal string.
     """
 
-    # RAG answers are already strings,
+    # RAG answers and some MCP outputs are already strings,
     # so no conversion is needed.
     if isinstance(tool_result, str):
         return tool_result
@@ -249,13 +415,21 @@ async def process_message(
 
     # First GPT call:
     #
-    # GPT reads the new message and previous conversation.
+    # GPT reads:
+    # - the newest user message
+    # - the previous conversation
+    # - all available tools
+    #
     # It then either:
     # - answers directly
-    # - requests one of our tools
+    # - requests one or more tools
     first_response = await client.responses.create(
         **first_request
     )
+
+    # The OpenAI SDK communicates with OpenAI over HTTPS.
+    # We do not manually write GET or POST requests because
+    # the SDK handles the network communication for us.
 
     # Store every function call requested by GPT.
     function_calls = [
@@ -284,6 +458,7 @@ async def process_message(
     # Run every tool requested by GPT.
     for function_call in function_calls:
 
+        # Name of the tool selected by GPT.
         tool_name = function_call.name
 
         # GPT provides the tool arguments as JSON text.
@@ -292,7 +467,8 @@ async def process_message(
             function_call.arguments
         )
 
-        # Run the selected RAG or MCP tool.
+        # Run the selected RAG, custom MCP,
+        # or GitHub MCP tool.
         tool_result = await run_tool(
             tool_name,
             arguments,
@@ -319,8 +495,8 @@ async def process_message(
 
     # Second GPT call:
     #
-    # Send all tool results back to the response that
-    # originally requested those tools.
+    # Send the tool results back to the exact response
+    # that originally requested those tools.
     #
     # GPT then converts the raw tool data into a clear,
     # natural-language final answer.
@@ -335,6 +511,10 @@ async def process_message(
     return {
         "type": "tool_call",
         "answer": final_response.output_text,
-        "tool": tools_used[0] if len(tools_used) == 1 else tools_used,
+        "tool": (
+            tools_used[0]
+            if len(tools_used) == 1
+            else tools_used
+        ),
         "response_id": final_response.id,
     }

@@ -25,10 +25,10 @@ async def main():
 
     print(
         "\nAsk a question about Supabase documentation, "
-        "developer accounts, or support tickets."
+        "developer accounts, support tickets, or GitHub repositories"
     )
 
-    print("Type 'exit' or 'quit' to close the agent.\n")
+    print("Type 'exit' to close the agent.\n")
 
     #keep program running and not end after one prompt
     while True: 
@@ -47,7 +47,7 @@ async def main():
         # exit
         # EXIT
         # Exit
-        if user_message.lower() in ["exit", "quit"]:
+        if user_message.lower() in ["exit"]:
             print("\nAgent: Goodbye!")
             break
 
