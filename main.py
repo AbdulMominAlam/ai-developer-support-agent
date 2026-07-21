@@ -42,11 +42,7 @@ async def main():
             continue
 
         # Convert the message to lowercase before checking it.
-        #
-        # This means all of these will work:
-        # exit
-        # EXIT
-        # Exit
+        
         if user_message.lower() in ["exit"]:
             print("\nAgent: Goodbye!")
             break

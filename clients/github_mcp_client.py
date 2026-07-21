@@ -63,7 +63,6 @@ def create_server_parameters(github_token):
     """
 
     # Copy all current environment variables.
-    #
     # This keeps important Windows variables,
     # such as PATH, while allowing us to add
     # the GitHub token.

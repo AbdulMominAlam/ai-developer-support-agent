@@ -55,8 +55,8 @@ async def call_mcp_tool(tool_name, arguments):
         )
 
         # Separate the connection into:
-        # - a stream for reading messages from the server
-        # - a stream for sending messages to the server
+        # a stream for reading messages from the server
+        # a stream for sending messages to the server
         read_stream, write_stream = stdio_transport
 
         # Create the MCP client session.

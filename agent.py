@@ -10,7 +10,6 @@ from clients.github_mcp_client import call_github_mcp_tool
 
 
 # Create an asynchronous OpenAI client.
-#
 # We use AsyncOpenAI because the rest of our agent,
 # MCP clients, and tool flow are asynchronous.
 client = AsyncOpenAI(
@@ -250,7 +249,7 @@ TOOLS = [
 ]
 
 
-async def run_tool(tool_name, arguments):
+async def run_tool(tool_name, arguments): #routing logic
     """
     Execute the tool selected by GPT.
 
@@ -310,7 +309,7 @@ async def run_tool(tool_name, arguments):
         #
         # This block maps our tool name to GitHub's tool name.
         return await call_github_mcp_tool(
-            "search_repositories",
+            "search_repositories", #this name we found when i listed all the tools
             {
                 "query": arguments["query"],
             },
@@ -389,7 +388,7 @@ async def process_message(
             The ID of GPT's previous response.
 
             Passing this ID lets GPT access the earlier
-            conversation and understand follow-up messages.
+            conversation and understand follow up messages.
 
     Returns:
         A dictionary containing:
@@ -408,18 +407,17 @@ async def process_message(
 
     # If this is not the first message, connect this request
     # to the previous GPT response.
-    #
     # This gives the agent conversation memory.
     if previous_response_id is not None:
         first_request["previous_response_id"] = previous_response_id
 
     # First GPT call:
-    #
+    
     # GPT reads:
-    # - the newest user message
-    # - the previous conversation
-    # - all available tools
-    #
+    # the newest user message
+    #  the previous conversation
+    # all available tools
+    
     # It then either:
     # - answers directly
     # - requests one or more tools
@@ -480,7 +478,6 @@ async def process_message(
         )
 
         # GPT gave this tool call a unique call_id.
-        #
         # We must return the result using the same call_id
         # so GPT knows which tool call the result belongs to.
         tool_outputs.append(

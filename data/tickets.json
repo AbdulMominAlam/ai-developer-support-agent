@@ -126,5 +126,53 @@
     "description": "The database connection keeps lagging.",
     "status": "Open",
     "created_at": "2026-07-16T15:59:45.655192"
+  },
+  {
+    "ticket_id": "TKT-0017",
+    "account_id": "ACC-1002",
+    "category": "Database issue",
+    "description": "Customer reports that the database is failing for account ACC-1002 (Bilal Ahmed).",
+    "status": "Open",
+    "created_at": "2026-07-20T12:09:04.989098"
+  },
+  {
+    "ticket_id": "TKT-0018",
+    "account_id": "ACC-1003",
+    "category": "Database connectivity",
+    "description": "User reports that their database is not connecting.",
+    "status": "Open",
+    "created_at": "2026-07-20T12:55:30.079989"
+  },
+  {
+    "ticket_id": "TKT-0019",
+    "account_id": "ACC-1002",
+    "category": "Authentication",
+    "description": "User reports they cannot log in because the password is incorrect.",
+    "status": "Open",
+    "created_at": "2026-07-20T15:59:48.961249"
+  },
+  {
+    "ticket_id": "TKT-0020",
+    "account_id": "ACC-1003",
+    "category": "Authentication / Password Reset",
+    "description": "Password reset is failing for account ACC-1003.",
+    "status": "Open",
+    "created_at": "2026-07-20T17:07:45.713812"
+  },
+  {
+    "ticket_id": "TKT-0021",
+    "account_id": "ACC-1003",
+    "category": "Password reset",
+    "description": "Password reset is failing for account ACC-1003.",
+    "status": "Open",
+    "created_at": "2026-07-20T17:16:32.057794"
+  },
+  {
+    "ticket_id": "TKT-0022",
+    "account_id": "ACC-1002",
+    "category": "Login issue",
+    "description": "The user cannot log in.",
+    "status": "Open",
+    "created_at": "2026-07-20T17:26:43.024938"
   }
 ]
