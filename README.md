@@ -1,32 +1,40 @@
 # AI Developer Support Agent
 
-An AI-powered developer support assistant built with the **OpenAI Responses API**, **Retrieval-Augmented Generation (RAG)**, **ChromaDB**, and the **Model Context Protocol (MCP)**.
+An AI-powered developer support assistant built with the **OpenAI
+Responses API**, **Retrieval-Augmented Generation (RAG)**, **ChromaDB**,
+**FastAPI**, and the **Model Context Protocol (MCP)**.
 
-The agent can answer technical questions from Supabase documentation, retrieve developer account information, create support tickets, and maintain context across a multi-turn conversation.
+The agent can answer technical questions from Supabase documentation,
+retrieve developer account information, create support tickets, maintain
+context across multi-turn conversations, and expose all functionality
+through both an interactive CLI and a REST API.
 
----
+------------------------------------------------------------------------
 
 ## Features
 
-- Answers Supabase documentation questions using RAG
-- Retrieves relevant document chunks from ChromaDB
-- Includes source citations in documentation answers
-- Uses an LLM to automatically select the correct tool
-- Looks up developer accounts through a custom MCP server
-- Creates and stores support tickets through MCP
-- Supports multi-turn conversation memory
-- Understands follow-up references such as:
-  - “it”
-  - “that account”
-  - “the same user”
-- Provides natural-language responses instead of raw JSON
-- Includes an interactive terminal chat interface
+-   Answers Supabase documentation questions using RAG
+-   Retrieves relevant document chunks from ChromaDB
+-   Includes source citations in documentation answers
+-   Uses an LLM to automatically select the correct tool
+-   Looks up developer accounts through a custom MCP server
+-   Creates and stores support tickets through MCP
+-   Supports multi-turn conversation memory using `previous_response_id`
+-   Understands follow-up references such as:
+    -   "it"
+    -   "that account"
+    -   "the same user"
+-   Provides natural-language responses instead of raw JSON
+-   Includes an interactive terminal chat interface
+-   Exposes the agent through a FastAPI REST API
+-   Supports testing with Postman
+-   Automatically generates OpenAPI / Swagger documentation
 
----
+------------------------------------------------------------------------
 
 ## Example Conversation
 
-```text
+``` text
 You: Show me account ACC-1001
 
 Agent:
@@ -51,74 +59,79 @@ Agent:
 The ticket ID is TKT-0013.
 ```
 
----
+------------------------------------------------------------------------
 
 ## Architecture
 
-```text
-                         User
-                           |
-                           v
-                        main.py
-                           |
-                           v
-                        agent.py
-                           |
-                           v
-                OpenAI Responses API
-                  Intent and tool routing
-                           |
-          +----------------+----------------+
-          |                |                |
-          v                v                v
-   Direct response    RAG pipeline      MCP client
-                           |                |
-                           v                v
-                       ChromaDB       Custom MCP server
-                           |                |
-                           v        +-------+--------+
-                  Supabase docs      |                |
-                                     v                v
-                              Account lookup    Ticket creation
-                                     |                |
-                                     v                v
-                              accounts.json     tickets.json
+``` text
+                User / Postman
+                      |
+                      v
+               FastAPI (api.py)
+                      |
+                      v
+               process_message()
+                      |
+                      v
+           OpenAI Responses API
+        Intent and Tool Selection
+                      |
+      +---------------+---------------+
+      |               |               |
+      v               v               v
+ Direct Reply   RAG Pipeline     MCP Client
+                     |               |
+                     v               v
+                 ChromaDB   Developer Support MCP
+                     |               |
+                     v         +-----+------+
+               Supabase Docs   |            |
+                               v            v
+                        Account Lookup   Ticket Creation
+                               |            |
+                               v            v
+                        accounts.json  tickets.json
 ```
 
----
+------------------------------------------------------------------------
 
 ## How It Works
 
-### 1. Tool Routing
+### 1. User Request
 
-The user’s message is sent to the OpenAI Responses API.
+A user sends a message either:
 
-The model decides whether it should:
+-   through the terminal (`main.py`), or
+-   through the FastAPI `/chat` endpoint.
 
-- answer directly,
-- search documentation,
-- look up an account, or
-- create a support ticket.
+### 2. Intent Detection
 
-### 2. RAG Documentation Search
+The request is forwarded to the OpenAI Responses API.
 
-For Supabase questions:
+The model decides whether to:
 
-1. Documentation is divided into smaller chunks.
-2. Each chunk is converted into an embedding.
-3. The embeddings are stored in ChromaDB.
-4. The user’s question is converted into an embedding.
-5. The most relevant chunks are retrieved.
-6. The model generates an answer using only the retrieved context.
-7. Relevant source filenames are included in the response.
+-   answer directly,
+-   search documentation,
+-   retrieve an account,
+-   create a support ticket.
 
-### 3. MCP Tools
+### 3. RAG
 
-Account lookup and ticket creation are exposed through a custom MCP server.
+For documentation questions:
 
-The agent communicates with the server using an asynchronous MCP client.
+1.  Documents are split into chunks.
+2.  Chunks are converted into embeddings.
+3.  Embeddings are stored in ChromaDB.
+4.  The user's question is embedded.
+5.  Similar chunks are retrieved.
+6.  Retrieved context is sent to the LLM.
+7.  The final grounded answer is generated.
 
-```text
+### 4. MCP
+
+Developer actions are handled through a custom MCP server.
+
+``` text
 Agent
   |
   v
@@ -132,38 +145,91 @@ Developer Support MCP Server
   +-- create_support_ticket
 ```
 
-### 4. Conversation Memory
+### 5. Conversation Memory
 
-The project uses the Responses API’s response chaining to maintain multi-turn context.
+The Responses API uses `previous_response_id` to continue conversations
+without resending the full history.
 
-This allows the agent to understand conversations such as:
+------------------------------------------------------------------------
 
-```text
-Show me account ACC-1001.
-How much usage does it have left?
-Create a ticket for it.
+## REST API
+
+Start the API server:
+
+``` bash
+uvicorn api:app --reload
 ```
 
----
+Default address:
+
+``` text
+http://localhost:8000
+```
+
+Swagger UI:
+
+``` text
+http://localhost:8000/docs
+```
+
+### POST /chat
+
+Request
+
+``` json
+{
+  "message": "How do I reset my Supabase password?",
+  "previous_response_id": null
+}
+```
+
+Response
+
+``` json
+{
+  "type": "rag",
+  "answer": "...",
+  "tool": "search_documentation",
+  "response_id": "resp_..."
+}
+```
+
+------------------------------------------------------------------------
+
+## Remote Testing
+
+The API can be exposed securely using ngrok.
+
+``` bash
+ngrok http 8000
+```
+
+This creates a temporary public HTTPS URL that forwards requests to the
+local FastAPI server.
+
+------------------------------------------------------------------------
 
 ## Technologies
 
-- Python
-- OpenAI Responses API
-- OpenAI Embeddings
-- Retrieval-Augmented Generation
-- ChromaDB
-- Model Context Protocol
-- AsyncIO
-- JSON-based mock backend
+-   Python
+-   FastAPI
+-   OpenAI Responses API
+-   OpenAI Embeddings
+-   Retrieval-Augmented Generation (RAG)
+-   ChromaDB
+-   Model Context Protocol (MCP)
+-   AsyncIO
+-   Postman
+-   ngrok
 
----
+------------------------------------------------------------------------
 
 ## Project Structure
 
-```text
+``` text
 ai-developer-support-agent/
 |
+|-- api.py
 |-- agent.py
 |-- main.py
 |-- tools.py
@@ -187,204 +253,122 @@ ai-developer-support-agent/
 |   |-- tickets.json
 |
 |-- examples/
-|
 |-- memory/
 |
 |-- test_agent.py
 |-- test_tools.py
 ```
 
----
+------------------------------------------------------------------------
 
 ## Setup
 
-### 1. Clone the repository
-
-```bash
+``` bash
 git clone https://github.com/AbdulMominAlam/ai-developer-support-agent.git
 cd ai-developer-support-agent
-```
 
-### 2. Create a virtual environment
-
-```bash
 python -m venv venv
-```
 
-Activate it on Windows:
-
-```powershell
+# Windows
 venv\Scripts\activate
-```
 
-Activate it on macOS or Linux:
-
-```bash
+# macOS / Linux
 source venv/bin/activate
-```
 
-### 3. Install dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 4. Create a `.env` file
+Create a `.env` file:
 
-Create a file named `.env` in the project root:
-
-```env
+``` env
 OPENAI_API_KEY=your_openai_api_key
-MODEL_NAME=your_openai_model
+MODEL_NAME=your_model_name
 ```
 
-The `.env` file is excluded from Git and should never be committed.
+------------------------------------------------------------------------
 
----
+## Build the Vector Database
 
-## Prepare the RAG Database
+Place documentation inside:
 
-The generated ChromaDB database and downloaded documentation are not included in the repository.
-
-Place the documentation files inside:
-
-```text
+``` text
 documents/
 ```
 
 Then run:
 
-```bash
+``` bash
 python rag/ingest.py
 ```
 
-This will:
+------------------------------------------------------------------------
 
-- load the documents,
-- split them into chunks,
-- generate embeddings, and
-- store them in ChromaDB.
+## Run
 
----
+CLI:
 
-## Run the Agent
-
-Start the interactive terminal application:
-
-```bash
+``` bash
 python main.py
 ```
 
-To close the application, type:
+API:
 
-```text
-exit
+``` bash
+uvicorn api:app --reload
 ```
 
-or:
-
-```text
-quit
-```
-
----
-
-## Run Tests
-
-Test the complete agent:
-
-```bash
-python test_agent.py
-```
-
-Test the backend tools:
-
-```bash
-python test_tools.py
-```
-
-Test the MCP client directly:
-
-```bash
-python clients/mcp_client.py
-```
-
----
+------------------------------------------------------------------------
 
 ## Available Tools
 
-### `search_documentation`
+-   `search_documentation`
+-   `get_account`
+-   `create_support_ticket`
 
-Searches the indexed Supabase documentation using RAG.
-
-### `get_account`
-
-Returns account information including:
-
-- name
-- email
-- plan
-- account status
-- monthly API usage
-- monthly API limit
-
-### `create_support_ticket`
-
-Creates a support ticket containing:
-
-- ticket ID
-- account ID
-- category
-- description
-- status
-- creation timestamp
-
----
+------------------------------------------------------------------------
 
 ## Example Tool Routing
 
-| User request | Selected path |
-|---|---|
-| “How do I reset a Supabase password?” | RAG documentation search |
-| “Show me account ACC-1001.” | MCP account lookup |
-| “Create a ticket for ACC-1002.” | MCP ticket creation |
-| “Hello.” | Direct response |
-| “How much usage does it have left?” | Conversation memory |
+  User Request                        Selected Path
+  ----------------------------------- ---------------------
+  How do I reset a password?          RAG
+  Show me account ACC-1001            MCP
+  Create a support ticket             MCP
+  Hello                               Direct Response
+  How much usage does it have left?   Conversation Memory
 
----
+------------------------------------------------------------------------
 
 ## Security
 
-- API keys are loaded through environment variables.
-- The `.env` file is excluded through `.gitignore`.
-- No API keys or secrets should be hardcoded.
-- MCP write operations should only be performed after clear user intent.
-- The included accounts and tickets are mock data for demonstration purposes.
+-   API keys stored in `.env`
+-   `.env` excluded by `.gitignore`
+-   Mock backend data only
+-   No secrets committed to Git
 
----
+------------------------------------------------------------------------
 
 ## Future Improvements
 
-- Integrate GitHub’s official MCP server
-- Add GitHub issue and repository tools
-- Add a Streamlit or web interface
-- Stream responses in real time
-- Add persistent conversation storage
-- Connect to a real database
-- Add authentication and user permissions
-- Improve logging and error handling
-- Add automated unit and integration tests
+-   GitHub MCP integration
+-   React frontend
+-   Streaming responses
+-   Authentication
+-   Persistent conversation storage
+-   PostgreSQL backend
+-   Better logging
+-   More automated tests
 
----
+------------------------------------------------------------------------
 
 ## License
 
-This project is licensed under the MIT License.
+MIT License
 
----
+------------------------------------------------------------------------
 
 ## Author
 
 **Abdul Momin Alam**
 
-GitHub: [AbdulMominAlam](https://github.com/AbdulMominAlam)
+GitHub: https://github.com/AbdulMominAlam
