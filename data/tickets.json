@@ -174,5 +174,13 @@
     "description": "The user cannot log in.",
     "status": "Open",
     "created_at": "2026-07-20T17:26:43.024938"
+  },
+  {
+    "ticket_id": "TKT-0023",
+    "account_id": "ACC-1003",
+    "category": "Account Suspension",
+    "description": "User reports that the account is suspended and requests assistance to restore access. The account belongs to Sara Malik (ACC-1003).",
+    "status": "Open",
+    "created_at": "2026-07-21T15:58:21.365029"
   }
 ]
