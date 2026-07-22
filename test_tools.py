@@ -1,5 +1,8 @@
 from tools import lookup_account, create_ticket
 
+import secrets
+#for my API token
+print(secrets.token_hex(32))
 
 print("\n--- Test 1: Valid Account Lookup ---")
 result = lookup_account("ACC-1001")

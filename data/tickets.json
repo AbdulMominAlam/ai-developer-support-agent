@@ -182,5 +182,29 @@
     "description": "User reports that the account is suspended and requests assistance to restore access. The account belongs to Sara Malik (ACC-1003).",
     "status": "Open",
     "created_at": "2026-07-21T15:58:21.365029"
+  },
+  {
+    "ticket_id": "TKT-0024",
+    "account_id": "ACC-1001",
+    "category": "Database issue",
+    "description": "The database connection keeps failing.",
+    "status": "Open",
+    "created_at": "2026-07-22T12:09:22.993028"
+  },
+  {
+    "ticket_id": "TKT-0025",
+    "account_id": "ACC-1002",
+    "category": "API usage",
+    "description": "The account has reached its monthly API call limit.",
+    "status": "Open",
+    "created_at": "2026-07-22T12:09:23.018553"
+  },
+  {
+    "ticket_id": "TKT-0026",
+    "account_id": "ACC-1003",
+    "category": "Authentication issue",
+    "description": "Users are unable to sign in with email and password.",
+    "status": "Open",
+    "created_at": "2026-07-22T12:09:23.041355"
   }
 ]
