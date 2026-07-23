@@ -46,7 +46,16 @@ app = FastAPI(
 def verify_api_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> str:
+    # FastAPI first runs `security` (HTTPBearer()) before entering this function.
+    # HTTPBearer() reads the Authorization header from the request.
+    # Example: Authorization: Bearer abc123xyz
+    # It then creates a `credentials` object containing:
+    #   credentials.scheme = "Bearer"
+    #   credentials.credentials = "abc123xyz"
 
+
+
+    # you get smth like this : Authorization: Bearer abc123xyz
     # credentials.credentials contains only the token,
     # without the word "Bearer".
     provided_token = credentials.credentials
