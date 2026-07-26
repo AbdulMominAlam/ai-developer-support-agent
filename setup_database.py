@@ -2,10 +2,17 @@ from database import get_connection
 
 
 def create_tables():
+    """
+    Create all PostgreSQL tables required by the project.
+    """
+
+    # Connect to the Neon PostgreSQL database
     with get_connection() as connection:
+
+        # Create a cursor so we can execute SQL commands
         with connection.cursor() as cursor:
 
-            # Create the accounts table first.
+            # Create the accounts table
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS accounts (
@@ -20,7 +27,7 @@ def create_tables():
                 """
             )
 
-            # Create tickets after accounts because tickets references accounts.
+            # Create the tickets table
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS tickets (
@@ -39,10 +46,22 @@ def create_tables():
                 """
             )
 
-        # Save the CREATE TABLE operations.
+            # Create the sessions table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id VARCHAR(100) PRIMARY KEY,
+                    response_id TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+
+        # Save the table creation changes
         connection.commit()
 
-    print("Tables created successfully!")
+    print("All tables created successfully!")
 
 
 if __name__ == "__main__":
