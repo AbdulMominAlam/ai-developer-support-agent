@@ -5,7 +5,7 @@ from tools import lookup_account, create_ticket
 #print(secrets.token_hex(32))
 
 print("\n--- Test 1: Valid Account Lookup ---")
-result = lookup_account("ACC-1001")
+result = lookup_account("ACC-1004")
 print(result)
 
 
