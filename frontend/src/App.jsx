@@ -1,14 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "./api";
 import "./App.css";
 
 function App() {
-  // Create one session ID when the page first loads.
   const [sessionId, setSessionId] = useState(
     `session-${Date.now()}`
   );
 
-  // Stores all messages displayed in the chat.
   const [messages, setMessages] = useState([
     {
       sender: "agent",
@@ -16,16 +14,21 @@ function App() {
     },
   ]);
 
-  // Stores the text currently typed by the user.
   const [input, setInput] = useState("");
-
-  // Prevents multiple messages from being sent at the same time.
   const [loading, setLoading] = useState(false);
+
+  // Used to automatically scroll to the newest message.
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [messages, loading]);
 
   const sendMessage = async () => {
     const trimmedInput = input.trim();
 
-    // Do not send an empty message or another message while loading.
     if (trimmedInput === "" || loading) {
       return;
     }
@@ -35,7 +38,6 @@ function App() {
       text: trimmedInput,
     };
 
-    // Immediately display the user's message.
     setMessages((currentMessages) => [
       ...currentMessages,
       userMessage,
@@ -45,7 +47,6 @@ function App() {
     setLoading(true);
 
     try {
-      // Send the user's message and session ID to FastAPI.
       const response = await api.post("/chat", {
         message: trimmedInput,
         session_id: sessionId,
@@ -57,7 +58,6 @@ function App() {
         tool: response.data.tool,
       };
 
-      // Display the answer returned by FastAPI.
       setMessages((currentMessages) => [
         ...currentMessages,
         agentMessage,
@@ -93,7 +93,6 @@ function App() {
   };
 
   const startNewChat = () => {
-    // A new session ID starts a completely separate conversation.
     setSessionId(`session-${Date.now()}`);
 
     setMessages([
@@ -106,13 +105,26 @@ function App() {
     setInput("");
   };
 
+  const formatToolName = (tool) => {
+    const toolNames = {
+      get_account: "Account Lookup",
+      create_support_ticket: "Support Ticket",
+      search_documentation: "Documentation Search",
+      search_github_repositories: "GitHub Repository Search",
+      list_github_issues: "GitHub Issue Search",
+      read_github_file: "GitHub File Reader",
+    };
+
+    return toolNames[tool] || tool;
+  };
+
   return (
     <div className="app">
       <div className="chat-container">
-        <div className="chat-header">
+        <header className="chat-header">
           <div>
             <h1>AI Developer Support Agent</h1>
-            <p>Session: {sessionId}</p>
+            <p>Connected to FastAPI, PostgreSQL and MCP tools</p>
           </div>
 
           <button
@@ -123,42 +135,65 @@ function App() {
           >
             New Chat
           </button>
+        </header>
+
+        <div className="session-status">
+          <span className="status-dot"></span>
+          <span>Active session</span>
         </div>
 
-        <div className="messages">
+        <main className="messages">
           {messages.map((message, index) => (
             <div
               key={index}
               className={
                 message.sender === "user"
-                  ? "message user-message"
-                  : "message agent-message"
+                  ? "message-row user-row"
+                  : "message-row agent-row"
               }
             >
-              {message.tool && (
-                <div className="tool-name">
-                  Tool used:{" "}
-                  {Array.isArray(message.tool)
-                    ? message.tool.join(", ")
-                    : message.tool}
-                </div>
-              )}
+              <div
+                className={
+                  message.sender === "user"
+                    ? "message user-message"
+                    : "message agent-message"
+                }
+              >
+                {message.tool && (
+                  <div className="tool-badges">
+                    {(Array.isArray(message.tool)
+                      ? message.tool
+                      : [message.tool]
+                    ).map((toolName) => (
+                      <span className="tool-badge" key={toolName}>
+                        {formatToolName(toolName)}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
-              <div>{message.text}</div>
+                <div>{message.text}</div>
+              </div>
             </div>
           ))}
 
           {loading && (
-            <div className="message agent-message">
-              Thinking...
+            <div className="message-row agent-row">
+              <div className="message agent-message thinking-message">
+                <span className="thinking-dot"></span>
+                <span className="thinking-dot"></span>
+                <span className="thinking-dot"></span>
+              </div>
             </div>
           )}
-        </div>
 
-        <div className="input-area">
+          <div ref={messagesEndRef}></div>
+        </main>
+
+        <footer className="input-area">
           <input
             type="text"
-            placeholder="Type your message..."
+            placeholder="Ask about accounts, documentation, tickets or GitHub..."
             value={input}
             disabled={loading}
             onChange={(event) => setInput(event.target.value)}
@@ -167,12 +202,13 @@ function App() {
 
           <button
             type="button"
+            className="send-button"
             onClick={sendMessage}
             disabled={loading}
           >
-            {loading ? "Sending..." : "Send"}
+            {loading ? "Sending" : "Send"}
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );
