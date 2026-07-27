@@ -139,7 +139,7 @@ function App() {
 
         <div className="session-status">
           <span className="status-dot"></span>
-          <span>Active session</span>
+          <span>Session ID: {sessionId}</span>
         </div>
 
         <main className="messages">
@@ -214,4 +214,4 @@ function App() {
   );
 }
 
-export default App;
+export default App;   
