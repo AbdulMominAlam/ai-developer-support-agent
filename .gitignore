@@ -62,3 +62,4 @@ Thumbs.db
 *.log
 
 forMe.txt
+node_modules
