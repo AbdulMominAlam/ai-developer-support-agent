@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from agent import process_message
+from fastapi.middleware.cors import CORSMiddleware
 
 # NEW
 from sessions import (
@@ -45,6 +46,14 @@ app = FastAPI(
     title="AI Developer Support Agent API",
     description="API access to the AI Developer Support Agent.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
