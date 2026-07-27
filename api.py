@@ -18,6 +18,12 @@ from pydantic import BaseModel
 
 from agent import process_message
 
+# NEW
+from sessions import (
+    get_session_response_id,
+    save_session_response_id,
+)
+
 
 # Load environment variables from the .env file.
 load_dotenv()
@@ -74,9 +80,9 @@ def verify_api_token(
 # This defines what the client must send to the API.
 class ChatRequest(BaseModel):
 
-    # The user's message and previous response ID.
+    # The user's message and session ID.
     message: str
-    previous_response_id: Optional[str] = None
+    session_id: str
 
 
 # This defines what our API will return to the client.
@@ -94,6 +100,9 @@ class ChatResponse(BaseModel):
 
     # Needed for multi-turn conversations.
     response_id: str
+
+    # Session ID of this conversation.
+    session_id: str
 
 
 @app.get("/")
@@ -115,9 +124,20 @@ async def chat(
 
     try:
 
+        # Get the latest OpenAI response ID for this session.
+        previous_response_id = get_session_response_id(
+            request.session_id
+        )
+
         result = await process_message(
             user_message=request.message,
-            previous_response_id=request.previous_response_id,
+            previous_response_id=previous_response_id,
+        )
+
+        # Save the newest response ID for future messages.
+        save_session_response_id(
+            session_id=request.session_id,
+            response_id=result["response_id"],
         )
 
         return ChatResponse(
@@ -125,6 +145,7 @@ async def chat(
             answer=result["answer"],
             tool=result.get("tool"),
             response_id=result["response_id"],
+            session_id=request.session_id,
         )
 
     except HTTPException:
