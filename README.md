@@ -1,429 +1,242 @@
 # AI Developer Support Agent
 
-An AI-powered developer support assistant built with the **OpenAI Responses API**, **Retrieval-Augmented Generation (RAG)**, **ChromaDB**, **PostgreSQL (Neon)**, **FastAPI**, and the **Model Context Protocol (MCP)**.
+An AI-powered Developer Support Agent built using the OpenAI Responses API, Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP), FastAPI, PostgreSQL, and React.
 
-The agent can answer technical questions from Supabase documentation, retrieve developer account information, create support tickets, maintain context across multi-turn conversations, and expose all functionality through both an interactive CLI and a REST API.
-
----
-
-# Features
-
-- Answers Supabase documentation questions using RAG
-- Retrieves relevant document chunks from ChromaDB
-- Includes source citations in documentation answers
-- Uses an LLM to automatically select the correct tool
-- Looks up developer accounts through a custom MCP server
-- Creates and stores support tickets in PostgreSQL
-- Supports multi-turn conversation memory using `previous_response_id`
-- Bearer Token Authentication for secure API access
-- Understands follow-up references such as:
-  - "it"
-  - "that account"
-  - "the same user"
-- Provides natural-language responses instead of raw JSON
-- Includes an interactive terminal chat interface
-- Exposes the agent through a FastAPI REST API
-- Supports testing with Postman
-- Automatically generates OpenAPI / Swagger documentation
+The application assists developers by answering documentation questions, retrieving customer account information, creating support tickets, and interacting with GitHub repositories through MCP tools. It supports persistent multi-turn conversations using PostgreSQL-backed session memory and provides a web-based chat interface for demonstration.
 
 ---
 
-# Example Conversation
+## Features
 
-```text
-You: Show me account ACC-1001
+- Multi-turn AI conversations using the OpenAI Responses API
+- Retrieval-Augmented Generation (RAG) using ChromaDB
+- Documentation question answering using Supabase documentation
+- MCP integration with custom developer support tools
+- GitHub MCP integration for repository, issue, and file operations
+- PostgreSQL (Neon) database for persistent account, ticket, and session storage
+- Session-based conversation memory
+- Bearer Token Authentication
+- FastAPI REST API
+- React frontend for interacting with the AI agent
+- API testing with Postman
 
-Agent:
-Account ACC-1001 belongs to Aisha Khan.
-The account is active on the Pro plan and has used
-8,200 of its 10,000 monthly API calls.
+---
 
-You: How many API calls does it have left?
+## Tech Stack
 
-Agent:
-It has 1,800 monthly API calls remaining.
+### Frontend
 
-You: Create a support ticket for it because the database is failing.
+- React
+- Vite
+- Axios
 
-Agent:
-Support ticket TKT-0027 was created successfully
-for account ACC-1001.
+### Backend
 
-You: What was the ticket ID?
+- Python
+- FastAPI
+- OpenAI Responses API
+- PostgreSQL (Neon)
+- Psycopg
+- MCP Python SDK
 
-Agent:
-The ticket ID is TKT-0027.
+### AI
+
+- GPT (OpenAI Responses API)
+- Retrieval-Augmented Generation (RAG)
+- ChromaDB
+- LangChain
+- Embeddings
+
+### MCP Servers
+
+- Custom Developer Support MCP Server
+- GitHub Official MCP Server
+
+---
+
+# Project Architecture
+
+```
+                React Frontend
+                       │
+                       ▼
+                FastAPI Backend
+                       │
+         ┌─────────────┴─────────────┐
+         ▼                           ▼
+ OpenAI Responses API         MCP Tool Calls
+         │                           │
+         ▼                           ▼
+      GPT Model                PostgreSQL
+                               ChromaDB
+                               GitHub MCP
 ```
 
 ---
 
-# Architecture
+## Project Structure
 
-```text
-                    User / Postman
-                          |
-                          v
-              Bearer Token Authentication
-                          |
-                          v
-                   FastAPI (api.py)
-                          |
-                          v
-                  process_message()
-                          |
-                          v
-               OpenAI Responses API
-            Intent and Tool Selection
-                          |
-        +-----------------+-----------------+
-        |                 |                 |
-        v                 v                 v
-   Direct Reply      RAG Pipeline      MCP Client
-                          |                 |
-                          v                 v
-                      ChromaDB     Developer Support MCP
-                          |                 |
-                          v          +------+------+
-                   Supabase Docs     |             |
-                                     v             v
-                              Account Lookup   Ticket Creation
-                                     |             |
-                                     +------+------+
-                                            |
-                                            v
-                                   PostgreSQL (Neon)
+```
+developer-support-agent/
+
+├── frontend/                 # React frontend
+│
+├── rag/
+│   ├── ingest.py
+│   ├── retriever.py
+│   └── answer.py
+│
+├── clients/
+│   ├── mcp_client.py
+│   └── github_mcp_client.py
+│
+├── mcp_servers/
+│   └── developer_support_server.py
+│
+├── api.py
+├── agent.py
+├── tools.py
+├── database.py
+├── sessions.py
+├── import_data.py
+├── setup_database.py
+├── config.py
+└── main.py
 ```
 
 ---
 
 # How It Works
 
-## 1. User Request
+The application begins in the React frontend, where the user enters a query through the chat interface. The frontend sends the user's message and session ID to the FastAPI `/chat` endpoint using Axios.
 
-A user sends a message either:
+FastAPI first authenticates the request using a Bearer Token. It then retrieves the latest OpenAI `response_id` associated with the provided session from PostgreSQL before passing the user's message and previous response ID to `process_message()` in `agent.py`.
 
-- through the terminal (`main.py`), or
-- through the FastAPI `/chat` endpoint.
+`process_message()` sends the user's prompt, system instructions, conversation history, and available tools to the OpenAI Responses API. GPT first determines whether it can answer directly or whether one or more tools are required.
+
+If documentation is needed, GPT calls the `search_documentation` tool. The request is routed through `rag/answer.py`, which retrieves relevant document chunks from ChromaDB using LangChain before generating an answer grounded in the retrieved documentation.
+
+If account or ticket information is required, GPT calls the custom Developer Support MCP Server. The MCP server executes SQL queries against PostgreSQL to retrieve account information or create new support tickets.
+
+If GitHub information is required, GPT calls one of the GitHub MCP tools, which communicate with GitHub's official MCP Server to retrieve repositories, issues, or file contents.
+
+After the required tools return their results, `agent.py` sends those results back to the OpenAI Responses API in a second request. GPT combines the retrieved information with the user's original request to generate a final natural-language response.
+
+The API then stores the newest OpenAI `response_id` in PostgreSQL, allowing future requests within the same session to continue the conversation with full context. Finally, the completed response is returned to the React frontend and displayed to the user.
 
 ---
 
-## 2. Authentication
+# Session-Based Conversation Memory
 
-Every request to the API must include a valid Bearer Token.
+Conversation memory is managed entirely by the backend using PostgreSQL.
 
-If authentication succeeds, the request is processed.
-Otherwise, the API returns:
+Each conversation is assigned a unique session ID. The backend stores the latest OpenAI response ID associated with that session in a dedicated `sessions` table. For every new request, FastAPI retrieves the stored response ID and passes it to the OpenAI Responses API, allowing GPT to continue the existing conversation without requiring the frontend to manage conversation history.
 
-```text
-401 Unauthorized
+Selecting **New Chat** creates a brand-new session ID, resulting in a completely independent conversation with no previous context.
+
+---
+
+# PostgreSQL Integration
+
+The application uses PostgreSQL (Neon) instead of JSON files for persistent data storage.
+
+Three database tables are used:
+
+- `accounts`
+- `tickets`
+- `sessions`
+
+Account lookups, support ticket creation, and conversation session management are all performed using SQL queries, providing a scalable and production-oriented backend.
+
+---
+
+# Authentication
+
+All API endpoints are protected using Bearer Token Authentication.
+
+Every request must include:
+
+```
+Authorization: Bearer <API_TOKEN>
 ```
 
----
-
-## 3. Intent Detection
-
-The request is forwarded to the OpenAI Responses API.
-
-The model decides whether to:
-
-- answer directly
-- search documentation
-- retrieve an account
-- create a support ticket
+FastAPI validates the token before processing any request.
 
 ---
 
-## 4. RAG
+# Running the Project
 
-For documentation questions:
-
-1. Documents are split into chunks.
-2. Chunks are converted into embeddings.
-3. Embeddings are stored in ChromaDB.
-4. The user's question is embedded.
-5. Similar chunks are retrieved.
-6. Retrieved context is sent to the LLM.
-7. The final grounded answer is generated.
-
----
-
-## 5. MCP
-
-Developer actions are handled through a custom MCP server.
-
-```text
-Agent
-  |
-  v
-MCP Client
-  |
-  v
-Developer Support MCP Server
-  |
-  +-- get_account
-  |
-  +-- create_support_ticket
-```
-
----
-
-## 6. PostgreSQL
-
-Developer accounts and support tickets are stored in a PostgreSQL database hosted on Neon.
-
-The MCP tools execute SQL queries to retrieve and update data instead of reading local JSON files.
-
----
-
-## 7. Conversation Memory
-
-The Responses API uses `previous_response_id` to continue conversations without resending the full history.
-
----
-
-# REST API
-
-Start the API server:
+## Backend
 
 ```bash
-uvicorn api:app --reload
-```
-
-Default address:
-
-```text
-http://localhost:8000
-```
-
-Swagger UI:
-
-```text
-http://localhost:8000/docs
-```
-
----
-
-## Authentication
-
-Include the Bearer Token in every request.
-
-```
-Authorization: Bearer YOUR_API_TOKEN
-```
-
----
-
-## POST /chat
-
-Request
-
-```json
-{
-  "message": "How do I reset my Supabase password?",
-  "previous_response_id": null
-}
-```
-
-Response
-
-```json
-{
-  "type": "rag",
-  "answer": "...",
-  "tool": "search_documentation",
-  "response_id": "resp_..."
-}
-```
-
----
-
-# Remote Testing
-
-The API can be exposed securely using ngrok.
-
-```bash
-ngrok http 8000
-```
-
-This creates a temporary public HTTPS URL that forwards requests to the local FastAPI server.
-
----
-
-# Technologies
-
-- Python
-- FastAPI
-- OpenAI Responses API
-- OpenAI Embeddings
-- Retrieval-Augmented Generation (RAG)
-- ChromaDB
-- PostgreSQL
-- Neon
-- Model Context Protocol (MCP)
-- AsyncIO
-- Postman
-- ngrok
-
----
-
-# Project Structure
-
-```text
-ai-developer-support-agent/
-|
-|-- api.py
-|-- agent.py
-|-- main.py
-|-- tools.py
-|-- database.py
-|-- setup_database.py
-|-- import_data.py
-|-- config.py
-|-- requirements.txt
-|-- README.md
-|
-|-- clients/
-|   |-- mcp_client.py
-|
-|-- mcp_servers/
-|   |-- developer_support_server.py
-|
-|-- rag/
-|   |-- ingest.py
-|   |-- retriever.py
-|   |-- answer.py
-|
-|-- data/
-|   |-- accounts.json
-|   |-- tickets.json
-|
-|-- chroma_db/
-|
-|-- documents/
-|
-|-- examples/
-|
-|-- memory/
-|
-|-- test_agent.py
-|-- test_tools.py
-```
-
----
-
-# Setup
-
-```bash
-git clone https://github.com/AbdulMominAlam/ai-developer-support-agent.git
-
-cd ai-developer-support-agent
-
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS / Linux
-source venv/bin/activate
-
 pip install -r requirements.txt
-```
 
-Create a `.env` file:
-
-```env
-OPENAI_API_KEY=your_openai_api_key
-MODEL_NAME=your_model_name
-DATABASE_URL=your_neon_database_url
-API_TOKEN=your_api_token
-```
-
----
-
-# Build the Vector Database
-
-Place documentation inside:
-
-```text
-documents/
-```
-
-Then run:
-
-```bash
-python rag/ingest.py
-```
-
----
-
-# Run
-
-CLI
-
-```bash
-python main.py
-```
-
-API
-
-```bash
 uvicorn api:app --reload
 ```
 
 ---
 
-# Available Tools
+## Frontend
 
-- `search_documentation`
-- `get_account`
-- `create_support_ticket`
+```bash
+cd frontend
 
----
+npm install
 
-# Example Tool Routing
-
-| User Request | Selected Path |
-|--------------|---------------|
-| How do I reset a password? | RAG |
-| Show me account ACC-1001 | MCP |
-| Create a support ticket | MCP |
-| Hello | Direct Response |
-| How much usage does it have left? | Conversation Memory |
+npm run dev
+```
 
 ---
 
-# Security
+# Example Prompts
 
-- Bearer Token Authentication
-- API keys stored in `.env`
-- PostgreSQL credentials stored in `.env`
-- `.env` excluded by `.gitignore`
-- Parameterized SQL queries
-- No secrets committed to Git
+### Account Lookup
+
+```
+Who is account ACC-1001?
+```
+
+### Follow-up Conversation
+
+```
+How many API calls does that account have remaining?
+```
+
+### Documentation
+
+```
+How do users reset their password?
+```
+
+### Support Ticket
+
+```
+Create a support ticket for ACC-1001 because the API is returning 500 errors.
+```
+
+### GitHub
+
+```
+List the open issues in the repository.
+```
 
 ---
 
 # Future Improvements
 
-- Session-based conversation management
-- Automatic session expiration
-- GitHub MCP integration
-- React frontend
-- Streaming responses
-- User authentication
-- Better logging
-- More automated tests
-
----
-
-# License
-
-MIT License
+- Streaming responses from the OpenAI Responses API
+- User authentication and login system
+- Conversation history management
+- Docker deployment
+- Cloud deployment
+- Additional MCP server integrations
+- Improved UI/UX
+- Analytics dashboard
 
 ---
 
 # Author
 
-**Abdul Momin Alam**
+Abdul Momin Alam
 
-GitHub: https://github.com/AbdulMominAlam
+Built as part of an AI Engineering Internship project focused on Agentic AI, Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP), OpenAI Responses API, FastAPI, PostgreSQL, and React.
