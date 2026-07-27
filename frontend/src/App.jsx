@@ -2,6 +2,7 @@ import { useState } from "react";
 import "./App.css";
 
 function App() {
+  // Stores all messages shown in the chat
   const [messages, setMessages] = useState([
     {
       sender: "agent",
@@ -9,20 +10,41 @@ function App() {
     },
   ]);
 
+  // Stores the text currently typed by the user
   const [input, setInput] = useState("");
 
   const sendMessage = () => {
+    // Do not send an empty message
     if (input.trim() === "") {
       return;
     }
 
-    const newMessage = {
+    const userMessage = {
       sender: "user",
       text: input,
     };
 
-    setMessages([...messages, newMessage]);
+    const temporaryAgentMessage = {
+      sender: "agent",
+      text: "This will eventually come from our AI backend.",
+    };
+
+    // Add both the user's message and the temporary AI response
+    setMessages([
+      ...messages,
+      userMessage,
+      temporaryAgentMessage,
+    ]);
+
+    // Clear the input box
     setInput("");
+  };
+
+  const handleKeyDown = (event) => {
+    // Send the message when Enter is pressed
+    if (event.key === "Enter") {
+      sendMessage();
+    }
   };
 
   return (
@@ -51,9 +73,12 @@ function App() {
             placeholder="Type your message..."
             value={input}
             onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleKeyDown}
           />
 
-          <button onClick={sendMessage}>Send</button>
+          <button type="button" onClick={sendMessage}>
+            Send
+          </button>
         </div>
       </div>
     </div>
