@@ -56,21 +56,56 @@ The application assists developers by answering documentation questions, retriev
 
 # Project Architecture
 
-```
-                React Frontend
-                       │
-                       ▼
-                FastAPI Backend
-                       │
-         ┌─────────────┴─────────────┐
-         ▼                           ▼
- OpenAI Responses API         MCP Tool Calls
-         │                           │
-         ▼                           ▼
-      GPT Model                PostgreSQL
-                               ChromaDB
-                               GitHub MCP
-```
+                                USER
+                                  │
+                                  ▼
+                       React Frontend (Vite)
+                                  │
+                           Axios HTTP Request
+                                  │
+                                  ▼
+                      FastAPI Backend (api.py)
+                                  │
+                    Bearer Token Authentication
+                                  │
+                                  ▼
+                       process_message() (agent.py)
+                                  │
+                ┌─────────────────┴─────────────────┐
+                │                                   │
+                ▼                                   ▼
+      PostgreSQL Session Memory          OpenAI Responses API
+      (session_id → response_id)                 (GPT)
+                │                                   │
+                │                                   │
+                └──────────────┬────────────────────┘
+                               │
+                     GPT decides whether
+                     external tools are needed
+                               │
+          ┌────────────────────┴─────────────────────┐
+          │                                          │
+          ▼                                          ▼
+     Documentation Search                    GitHub / Support Tools
+        (RAG Pipeline)                         (MCP Servers)
+          │                                          │
+          ▼                                          ▼
+      ChromaDB Vector DB                  GitHub MCP Server
+          │                               Developer Support MCP
+          │                                          │
+          ▼                                          ▼
+  Relevant Document Chunks              PostgreSQL (Accounts/Tickets)
+          │                                          │
+          └────────────────────┬─────────────────────┘
+                               │
+                               ▼
+                   OpenAI generates final response
+                               │
+                               ▼
+                  Save latest response_id to PostgreSQL
+                               │
+                               ▼
+                    Return response to React UI
 
 ---
 
