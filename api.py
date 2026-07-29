@@ -7,11 +7,24 @@ from typing import Optional
 # FastAPI is used to create the web API.
 # HTTPException is used to return proper error messages.
 # Depends is used to run authentication before the endpoint.
-from fastapi import Depends, FastAPI, HTTPException, status
+# WebSocket is used to create a persistent connection
+# between the React frontend and FastAPI backend.
+# WebSocketDisconnect is raised when the browser closes the connection.
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    status,
+    WebSocket,
+    WebSocketDisconnect,
+)
 
 # HTTPBearer reads the Authorization: Bearer <token> header.
 # HTTPAuthorizationCredentials stores the token sent by the client.
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+)
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -19,7 +32,8 @@ from pydantic import BaseModel
 from agent import process_message
 from fastapi.middleware.cors import CORSMiddleware
 
-# NEW
+# Session functions are used to store and retrieve
+# the latest OpenAI response ID for each conversation.
 from sessions import (
     get_session_response_id,
     save_session_response_id,
@@ -34,10 +48,14 @@ API_TOKEN = os.getenv("API_TOKEN")
 
 # Stop immediately if API_TOKEN is missing.
 if not API_TOKEN:
-    raise RuntimeError("API_TOKEN is missing from the .env file.")
+    raise RuntimeError(
+        "API_TOKEN is missing from the .env file."
+    )
 
 
 # Creates the Bearer-token authentication scheme.
+#
+# This is still used by the normal HTTP /chat endpoint.
 security = HTTPBearer()
 
 
@@ -48,6 +66,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+# CORS allows the React frontend running on port 5173
+# to communicate with the FastAPI backend.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -58,35 +79,57 @@ app.add_middleware(
 
 
 # This function checks whether the provided API token is valid.
+#
+# This authentication function is used for normal HTTP routes.
 def verify_api_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(
+        security
+    ),
 ) -> str:
-    # FastAPI first runs `security` (HTTPBearer()) before entering this function.
-    # HTTPBearer() reads the Authorization header from the request.
-    # Example: Authorization: Bearer abc123xyz
+
+    # FastAPI first runs `security` (HTTPBearer()) before
+    # entering this function.
+    #
+    # HTTPBearer() reads the Authorization header
+    # from the request.
+    #
+    # Example:
+    #
+    # Authorization: Bearer abc123xyz
+    #
     # It then creates a `credentials` object containing:
-    #   credentials.scheme = "Bearer"
-    #   credentials.credentials = "abc123xyz"
+    #
+    # credentials.scheme = "Bearer"
+    # credentials.credentials = "abc123xyz"
 
-
-
-    # you get smth like this : Authorization: Bearer abc123xyz
+    # You get something like:
+    #
+    # Authorization: Bearer abc123xyz
+    #
     # credentials.credentials contains only the token,
     # without the word "Bearer".
     provided_token = credentials.credentials
 
     # Compare the received token with the token stored in .env.
-    if not secrets.compare_digest(provided_token, API_TOKEN):
+    #
+    # secrets.compare_digest() is safer than using == for
+    # secret values.
+    if not secrets.compare_digest(
+        provided_token,
+        API_TOKEN,
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API token.",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
         )
 
     return provided_token
 
 
-# This defines what the client must send to the API.
+# This defines what the client must send to the normal HTTP API.
 class ChatRequest(BaseModel):
 
     # The user's message and session ID.
@@ -94,7 +137,7 @@ class ChatRequest(BaseModel):
     session_id: str
 
 
-# This defines what our API will return to the client.
+# This defines what our normal HTTP API will return to the client.
 class ChatResponse(BaseModel):
 
     # Indicates whether GPT answered directly
@@ -118,37 +161,60 @@ class ChatResponse(BaseModel):
 async def root():
 
     return {
-        "message": "AI Developer Support Agent API is running."
+        "message": (
+            "AI Developer Support Agent API is running."
+        )
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
+# This is the original HTTP chat endpoint.
+#
+# We are keeping it temporarily as a backup while
+# testing the new WebSocket endpoint.
+@app.post(
+    "/chat",
+    response_model=ChatResponse,
+)
 async def chat(
     request: ChatRequest,
 
-    # Before chat() runs, FastAPI calls verify_api_token().
-    # If the token is invalid, the request stops with a 401 error.
-    authenticated_token: str = Depends(verify_api_token),
+    # Before chat() runs, FastAPI calls
+    # verify_api_token().
+    #
+    # If the token is invalid, the request stops
+    # with a 401 error.
+    authenticated_token: str = Depends(
+        verify_api_token
+    ),
 ):
 
     try:
 
-        # Get the latest OpenAI response ID for this session.
-        previous_response_id = get_session_response_id(
-            request.session_id
+        # Get the latest OpenAI response ID
+        # for this session.
+        previous_response_id = (
+            get_session_response_id(
+                request.session_id
+            )
         )
 
+        # Send the user's message to the agent.
         result = await process_message(
             user_message=request.message,
-            previous_response_id=previous_response_id,
+            previous_response_id=(
+                previous_response_id
+            ),
         )
 
-        # Save the newest response ID for future messages.
+        # Save the newest response ID
+        # for future messages.
         save_session_response_id(
             session_id=request.session_id,
             response_id=result["response_id"],
         )
 
+        # Return the complete response
+        # to the React frontend.
         return ChatResponse(
             type=result["type"],
             answer=result["answer"],
@@ -158,11 +224,227 @@ async def chat(
         )
 
     except HTTPException:
-        # Do not convert existing FastAPI errors into HTTP 500 errors.
+
+        # Do not convert existing FastAPI errors
+        # into HTTP 500 errors.
         raise
 
     except Exception as error:
+
+        # Convert unexpected errors into
+        # an HTTP 500 response.
         raise HTTPException(
             status_code=500,
             detail=str(error),
         ) from error
+
+
+# This is the new WebSocket chat endpoint.
+#
+# Unlike a normal HTTP request, the WebSocket connection
+# stays open and can be used for multiple messages.
+@app.websocket("/ws/chat")
+async def websocket_chat(
+    websocket: WebSocket,
+):
+
+    # Browser WebSockets cannot easily send a custom
+    # Authorization header.
+    #
+    # Therefore, the React frontend sends the API token
+    # in the WebSocket URL as a query parameter.
+    #
+    # Example:
+    #
+    # ws://localhost:8000/ws/chat?token=abc123
+    provided_token = websocket.query_params.get(
+        "token"
+    )
+
+    # Reject the connection if the token is missing.
+    if provided_token is None:
+
+        # Code 1008 means the connection was closed
+        # because of a policy or authentication problem.
+        await websocket.close(
+            code=1008,
+            reason="API token is missing.",
+        )
+
+        return
+
+    # Compare the provided token with the token
+    # stored in the backend .env file.
+    if not secrets.compare_digest(
+        provided_token,
+        API_TOKEN,
+    ):
+
+        await websocket.close(
+            code=1008,
+            reason="Invalid API token.",
+        )
+
+        return
+
+    # Accept the WebSocket connection.
+    #
+    # The client and server can now send messages
+    # to each other through the same open connection.
+    await websocket.accept()
+
+    print("WebSocket client connected.")
+
+    try:
+
+        # Keep waiting for new messages.
+        #
+        # This loop allows one WebSocket connection
+        # to process multiple chat messages.
+        while True:
+
+            # Wait for the React frontend
+            # to send JSON data.
+            #
+            # Expected format:
+            #
+            # {
+            #     "message": "Who is account ACC-1001?",
+            #     "session_id": "session-123"
+            # }
+            request_data = (
+                await websocket.receive_json()
+            )
+
+            # Read the user message from the JSON object.
+            #
+            # .get() avoids a KeyError if the key is missing.
+            message = request_data.get(
+                "message",
+                "",
+            ).strip()
+
+            # Read the session ID from the JSON object.
+            session_id = request_data.get(
+                "session_id",
+                "",
+            ).strip()
+
+            # Check that the user actually sent a message.
+            if not message:
+
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": (
+                            "Message cannot be empty."
+                        ),
+                    }
+                )
+
+                # Skip the rest of this loop
+                # and wait for another message.
+                continue
+
+            # Check that a session ID was included.
+            if not session_id:
+
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": (
+                            "Session ID is required."
+                        ),
+                    }
+                )
+
+                continue
+
+            # Tell the React frontend that the backend
+            # has started processing the message.
+            #
+            # React can use this event to display
+            # the loading animation.
+            await websocket.send_json(
+                {
+                    "type": "response_started",
+                    "session_id": session_id,
+                }
+            )
+
+            try:
+
+                # Get the latest OpenAI response ID
+                # for this session.
+                #
+                # This gives the agent access to
+                # previous messages in the conversation.
+                previous_response_id = (
+                    get_session_response_id(
+                        session_id
+                    )
+                )
+
+                # Send the user's message to the agent.
+                #
+                # process_message() still returns
+                # one complete response for now.
+                #
+                # We will add OpenAI streaming later.
+                result = await process_message(
+                    user_message=message,
+                    previous_response_id=(
+                        previous_response_id
+                    ),
+                )
+
+                # Save the newest OpenAI response ID
+                # so the next message has conversation memory.
+                save_session_response_id(
+                    session_id=session_id,
+                    response_id=(
+                        result["response_id"]
+                    ),
+                )
+
+                # Send the complete result back
+                # through the WebSocket.
+                #
+                # For now, the answer is sent all at once.
+                #
+                # Later, this will be replaced with
+                # multiple "text_delta" events.
+                await websocket.send_json(
+                    {
+                        "type": (
+                            "response_completed"
+                        ),
+                        "answer": result["answer"],
+                        "tool": result.get("tool"),
+                        "response_id": (
+                            result["response_id"]
+                        ),
+                        "session_id": session_id,
+                    }
+                )
+
+            except Exception as error:
+
+                # Unlike a normal HTTP route, we cannot
+                # raise an HTTPException after the WebSocket
+                # connection has already been accepted.
+                #
+                # Instead, send an error event through
+                # the WebSocket connection.
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": str(error),
+                    }
+                )
+
+    except WebSocketDisconnect:
+
+        # This happens when the user closes the browser,
+        # refreshes the page, or loses the connection.
+        print("WebSocket client disconnected.")
