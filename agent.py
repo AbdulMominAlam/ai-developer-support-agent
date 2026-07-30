@@ -517,6 +517,224 @@ async def process_message(
     }
 
 
+async def process_message_stream(
+    user_message,
+    previous_response_id=None,
+):
+    """
+    Process one user message using OpenAI streaming.
+
+    This function supports:
+
+    - direct GPT answers
+    - RAG tool calls
+    - Developer Support MCP tools
+    - GitHub MCP tools
+    - multiple tool calls
+    - previous_response_id conversation memory
+    - streamed final text
+
+    Instead of returning one dictionary, this function yields
+    multiple event dictionaries over time.
+    """
+
+    # Build the first OpenAI request.
+    first_request = {
+        "model": MODEL_NAME,
+        "instructions": AGENT_INSTRUCTIONS,
+        "input": user_message,
+        "tools": TOOLS,
+        "stream": True,
+    }
+
+    # Connect this message to the earlier conversation,
+    # if the session already has an OpenAI response ID.
+    if previous_response_id is not None:
+        first_request["previous_response_id"] = (
+            previous_response_id
+        )
+
+    # Start the first OpenAI stream.
+    #
+    # GPT will either:
+    #
+    # 1. stream a direct text answer
+    # 2. request one or more tools
+    first_stream = await client.responses.create(
+        **first_request
+    )
+
+    # Store the first OpenAI response ID.
+    first_response_id = None
+
+    # Store any function calls requested by GPT.
+    function_calls = []
+
+    # Track whether GPT produced visible text.
+    direct_text_was_streamed = False
+
+    # Read the first stream event by event.
+    async for event in first_stream:
+
+        # Save the response ID as soon as OpenAI creates it.
+        if event.type == "response.created":
+            first_response_id = event.response.id
+
+        # If GPT answers directly, forward each text chunk.
+        if event.type == "response.output_text.delta":
+            direct_text_was_streamed = True
+
+            yield {
+                "type": "text_delta",
+                "delta": event.delta,
+            }
+
+        # This event contains the completed function-call
+        # name and complete JSON arguments.
+        #
+        # We wait for the .done event instead of using
+        # the partial argument delta events.
+        if (
+            event.type
+            == "response.function_call_arguments.done"
+        ):
+            function_calls.append(
+                {
+                    "name": event.name,
+                    "arguments": event.arguments,
+
+                    # The completed arguments event gives us
+                    # the item ID, but the tool result requires
+                    # the function call's call_id.
+                    #
+                    # We temporarily store item_id and resolve
+                    # the full function call after the stream.
+                    "item_id": event.item_id,
+                }
+            )
+
+        # Save the final first-response ID.
+        if event.type == "response.completed":
+            first_response_id = event.response.id
+
+            # Match each collected function-call event
+            # with the complete function_call output item.
+            complete_function_calls = [
+                output_item
+                for output_item in event.response.output
+                if output_item.type == "function_call"
+            ]
+
+            function_calls = [
+                {
+                    "name": function_call.name,
+                    "arguments": function_call.arguments,
+                    "call_id": function_call.call_id,
+                }
+                for function_call in complete_function_calls
+            ]
+
+    # If no tools were requested, GPT already streamed
+    # the complete direct answer.
+    if not function_calls:
+        yield {
+            "type": "response_completed",
+            "tool": None,
+            "response_id": first_response_id,
+        }
+
+        return
+
+    # The first stream requested tools instead of
+    # producing the final answer.
+    tool_outputs = []
+    tools_used = []
+
+    # Run each tool requested by GPT.
+    for function_call in function_calls:
+        tool_name = function_call["name"]
+
+        # Convert GPT's JSON argument string
+        # into a Python dictionary.
+        arguments = json.loads(
+            function_call["arguments"]
+        )
+
+        # Tell React which tool is being run.
+        #
+        # Your current frontend may ignore this event.
+        # We can add a live tool indicator later.
+        yield {
+            "type": "tool_started",
+            "tool": tool_name,
+        }
+
+        # Run the RAG, MCP, or GitHub tool.
+        tool_result = await run_tool(
+            tool_name,
+            arguments,
+        )
+
+        # Convert dictionaries and lists into JSON text.
+        tool_result_text = convert_tool_result_to_text(
+            tool_result
+        )
+
+        # Send the result back using the exact call_id
+        # supplied by OpenAI.
+        tool_outputs.append(
+            {
+                "type": "function_call_output",
+                "call_id": function_call["call_id"],
+                "output": tool_result_text,
+            }
+        )
+
+        tools_used.append(tool_name)
+
+    # Start the second OpenAI stream.
+    #
+    # This time GPT receives the tool results and writes
+    # the natural-language final answer.
+    final_stream = await client.responses.create(
+        model=MODEL_NAME,
+        instructions=AGENT_INSTRUCTIONS,
+        previous_response_id=first_response_id,
+        input=tool_outputs,
+        tools=TOOLS,
+        stream=True,
+    )
+
+    final_response_id = None
+
+    # Stream the final natural-language answer.
+    async for event in final_stream:
+
+        if event.type == "response.created":
+            final_response_id = event.response.id
+
+        if event.type == "response.output_text.delta":
+            yield {
+                "type": "text_delta",
+                "delta": event.delta,
+            }
+
+        if event.type == "response.completed":
+            final_response_id = event.response.id
+
+    # Tell FastAPI and React that streaming is finished.
+    yield {
+        "type": "response_completed",
+        "tool": (
+            tools_used[0]
+            if len(tools_used) == 1
+            else tools_used
+        ),
+        "response_id": final_response_id,
+    }
+
+
+
 async def process_message_stream_test(
     user_message,
 ):

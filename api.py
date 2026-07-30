@@ -32,7 +32,7 @@ from pydantic import BaseModel
 
 from agent import (
     process_message,
-    process_message_stream_test,
+    process_message_stream,
 )
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -387,16 +387,35 @@ async def websocket_chat(
                 # Each item in this list represents
                 # one piece of the final answer.
                 # Receive real streaming events from OpenAI.
-                async for stream_event in process_message_stream_test(
-                    user_message=message,
-                ):
+                
+                # Get the previous OpenAI response ID
+                # for this application session.
+                previous_response_id = get_session_response_id(
+                    session_id
+                )
 
+                # Process the message and forward every streamed event
+                # from agent.py to the React frontend.
+                async for stream_event in process_message_stream(
+                    user_message=message,
+                    previous_response_id=previous_response_id,
+                ):
                     # Add the application session ID
-                    # before forwarding the event to React.
+                    # to every event sent to React.
                     stream_event["session_id"] = session_id
 
-                    # Send each OpenAI event through the WebSocket.
                     await websocket.send_json(stream_event)
+
+                    # Save the final OpenAI response ID only after
+                    # the complete streamed response has finished.
+                    if (
+                        stream_event["type"]
+                        == "response_completed"
+                    ):
+                        save_session_response_id(
+                            session_id=session_id,
+                            response_id=stream_event["response_id"],
+                        )
 
             except Exception as error:
 
