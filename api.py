@@ -74,12 +74,11 @@ app.add_middleware(
     allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"],  
 )
 
 
 # This function checks whether the provided API token is valid.
-#
 # This authentication function is used for normal HTTP routes.
 def verify_api_token(
     credentials: HTTPAuthorizationCredentials = Depends(
@@ -288,7 +287,6 @@ async def websocket_chat(
         return
 
     # Accept the WebSocket connection.
-    #
     # The client and server can now send messages
     # to each other through the same open connection.
     await websocket.accept()
@@ -298,7 +296,6 @@ async def websocket_chat(
     try:
 
         # Keep waiting for new messages.
-        #
         # This loop allows one WebSocket connection
         # to process multiple chat messages.
         while True:
