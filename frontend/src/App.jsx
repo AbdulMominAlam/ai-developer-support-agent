@@ -10,6 +10,7 @@ function App() {
     {
       sender: "agent",
       text: "Hello! How can I help you today?",
+      tool: null,
     },
   ]);
 
@@ -36,6 +37,20 @@ function App() {
     const apiUrl = import.meta.env.VITE_API_URL;
     const apiToken = import.meta.env.VITE_API_TOKEN;
 
+    if (!apiUrl) {
+      console.error(
+        "VITE_API_URL is missing from the frontend .env file."
+      );
+      return;
+    }
+
+    if (!apiToken) {
+      console.error(
+        "VITE_API_TOKEN is missing from the frontend .env file."
+      );
+      return;
+    }
+
     // Convert the normal backend URL into a WebSocket URL.
     //
     // http://localhost:8000 becomes:
@@ -44,8 +59,9 @@ function App() {
     // https://example.com becomes:
     // wss://example.com
     const websocketUrl = apiUrl
-      .replace("http://", "ws://")
-      .replace("https://", "wss://");
+      .replace(/^http:\/\//, "ws://")
+      .replace(/^https:\/\//, "wss://")
+      .replace(/\/$/, "");
 
     // Open the connection to the FastAPI WebSocket endpoint.
     const socket = new WebSocket(
@@ -64,7 +80,18 @@ function App() {
 
     // Runs whenever FastAPI sends a message.
     socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      let data;
+
+      try {
+        data = JSON.parse(event.data);
+      } catch (error) {
+        console.error(
+          "Could not parse WebSocket message:",
+          event.data,
+          error
+        );
+        return;
+      }
 
       console.log("WebSocket event:", data);
 
@@ -74,13 +101,12 @@ function App() {
         setLoading(true);
         setStreaming(true);
 
-        // Reset the tool for the new response.
         currentToolRef.current = null;
 
         // Add one empty assistant message.
         //
-        // Incoming text_delta events will be appended
-        // to this same message.
+        // Future text_delta events and tool badges
+        // will update this same message.
         setMessages((currentMessages) => {
           const newMessages = [
             ...currentMessages,
@@ -100,42 +126,73 @@ function App() {
         return;
       }
 
-      // Store the tool selected by GPT.
-      //
-      // The tool badge will be attached to the assistant
-      // message when the response completes.
+      // The backend sends this when GPT selects a tool.
       if (data.type === "tool_started") {
-        console.log("Tool started:", data.tool);
+        const selectedTool = data.tool || null;
 
-        currentToolRef.current = data.tool;
+        currentToolRef.current = selectedTool;
 
-        return;
-      }
-
-      // Append every streamed text chunk to the
-      // same assistant message.
-      if (data.type === "text_delta") {
+        // Attach the tool badge immediately to the
+        // assistant message currently being streamed.
         setMessages((currentMessages) => {
-          const updatedMessages = [...currentMessages];
-
           const messageIndex =
             streamingMessageIndexRef.current;
 
           if (
             messageIndex === null ||
-            !updatedMessages[messageIndex]
+            !currentMessages[messageIndex]
           ) {
             return currentMessages;
           }
 
-          updatedMessages[messageIndex] = {
-            ...updatedMessages[messageIndex],
-            text:
-              updatedMessages[messageIndex].text +
-              data.delta,
-          };
+          return currentMessages.map((message, index) => {
+            if (index !== messageIndex) {
+              return message;
+            }
 
-          return updatedMessages;
+            return {
+              ...message,
+              tool: selectedTool,
+            };
+          });
+        });
+
+        return;
+      }
+
+      // Append each streamed text piece to the
+      // same assistant message.
+      if (data.type === "text_delta") {
+        const delta =
+          typeof data.delta === "string"
+            ? data.delta
+            : "";
+
+        if (!delta) {
+          return;
+        }
+
+        setMessages((currentMessages) => {
+          const messageIndex =
+            streamingMessageIndexRef.current;
+
+          if (
+            messageIndex === null ||
+            !currentMessages[messageIndex]
+          ) {
+            return currentMessages;
+          }
+
+          return currentMessages.map((message, index) => {
+            if (index !== messageIndex) {
+              return message;
+            }
+
+            return {
+              ...message,
+              text: `${message.text || ""}${delta}`,
+            };
+          });
         });
 
         return;
@@ -143,36 +200,33 @@ function App() {
 
       // The backend sends this after the final text chunk.
       if (data.type === "response_completed") {
-        console.log("Response completed:", data);
+        // Save the completed values before clearing the refs.
+        const completedMessageIndex =
+          streamingMessageIndexRef.current;
+
+        const completedTool =
+          data.tool ?? currentToolRef.current ?? null;
 
         setMessages((currentMessages) => {
-          const updatedMessages = [...currentMessages];
-
-          const messageIndex =
-            streamingMessageIndexRef.current;
-
           if (
-            messageIndex !== null &&
-            updatedMessages[messageIndex]
+            completedMessageIndex === null ||
+            !currentMessages[completedMessageIndex]
           ) {
-            updatedMessages[messageIndex] = {
-              ...updatedMessages[messageIndex],
-
-              // Prefer the tool included in
-              // response_completed.
-              //
-              // Fall back to the tool stored from
-              // the tool_started event.
-              tool:
-                data.tool ||
-                currentToolRef.current,
-            };
+            return currentMessages;
           }
 
-          return updatedMessages;
+          return currentMessages.map((message, index) => {
+            if (index !== completedMessageIndex) {
+              return message;
+            }
+
+            return {
+              ...message,
+              tool: completedTool,
+            };
+          });
         });
 
-        // The current streamed response is finished.
         streamingMessageIndexRef.current = null;
         currentToolRef.current = null;
 
@@ -184,15 +238,47 @@ function App() {
 
       // Display backend errors inside the chat.
       if (data.type === "error") {
-        setMessages((currentMessages) => [
-          ...currentMessages,
-          {
-            sender: "agent",
-            text:
-              data.message ||
-              "An unexpected error occurred.",
-          },
-        ]);
+        const errorMessage =
+          data.message ||
+          "An unexpected error occurred.";
+
+        const currentStreamingIndex =
+          streamingMessageIndexRef.current;
+
+        setMessages((currentMessages) => {
+          // If an empty streamed assistant message already exists,
+          // place the error inside that same bubble.
+          if (
+            currentStreamingIndex !== null &&
+            currentMessages[currentStreamingIndex]
+          ) {
+            return currentMessages.map(
+              (message, index) => {
+                if (index !== currentStreamingIndex) {
+                  return message;
+                }
+
+                return {
+                  ...message,
+                  text: errorMessage,
+                  tool:
+                    message.tool ||
+                    currentToolRef.current,
+                };
+              }
+            );
+          }
+
+          // Otherwise, add a new error message.
+          return [
+            ...currentMessages,
+            {
+              sender: "agent",
+              text: errorMessage,
+              tool: null,
+            },
+          ];
+        });
 
         streamingMessageIndexRef.current = null;
         currentToolRef.current = null;
@@ -233,7 +319,12 @@ function App() {
     // Close the connection when the component is removed
     // or when the page is refreshed.
     return () => {
-      socket.close();
+      if (
+        socket.readyState === WebSocket.OPEN ||
+        socket.readyState === WebSocket.CONNECTING
+      ) {
+        socket.close();
+      }
     };
   }, []);
 
@@ -247,13 +338,17 @@ function App() {
   const sendMessage = () => {
     const trimmedInput = input.trim();
 
-    if (trimmedInput === "" || loading) {
+    if (
+      trimmedInput === "" ||
+      loading ||
+      !connected
+    ) {
       return;
     }
 
     const socket = socketRef.current;
 
-    // Make sure the WebSocket is connected
+    // Make sure the WebSocket is open
     // before sending a message.
     if (
       !socket ||
@@ -264,6 +359,7 @@ function App() {
         {
           sender: "agent",
           text: "The WebSocket connection is not ready.",
+          tool: null,
         },
       ]);
 
@@ -273,6 +369,7 @@ function App() {
     const userMessage = {
       sender: "user",
       text: trimmedInput,
+      tool: null,
     };
 
     setMessages((currentMessages) => [
@@ -282,6 +379,10 @@ function App() {
 
     setInput("");
     setLoading(true);
+    setStreaming(false);
+
+    streamingMessageIndexRef.current = null;
+    currentToolRef.current = null;
 
     // Convert the JavaScript object into JSON text
     // and send it through the WebSocket.
@@ -294,7 +395,11 @@ function App() {
   };
 
   const handleKeyDown = (event) => {
-    if (event.key === "Enter") {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
       sendMessage();
     }
   };
@@ -309,6 +414,7 @@ function App() {
       {
         sender: "agent",
         text: "Hello! How can I help you today?",
+        tool: null,
       },
     ]);
 
@@ -375,7 +481,7 @@ function App() {
         <main className="messages">
           {messages.map((message, index) => (
             <div
-              key={index}
+              key={`${message.sender}-${index}`}
               className={
                 message.sender === "user"
                   ? "message-row user-row"
@@ -439,7 +545,11 @@ function App() {
             type="button"
             className="send-button"
             onClick={sendMessage}
-            disabled={loading || !connected}
+            disabled={
+              loading ||
+              !connected ||
+              input.trim() === ""
+            }
           >
             {loading ? "Sending" : "Send"}
           </button>
