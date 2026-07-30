@@ -16,28 +16,20 @@ function App() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [connected, setConnected] = useState(false);
-
-  // Tracks whether text is currently being streamed.
-  //
-  // We use this to avoid showing the thinking dots
-  // underneath the streamed assistant message.
   const [streaming, setStreaming] = useState(false);
 
   // Used to automatically scroll to the newest message.
   const messagesEndRef = useRef(null);
 
-  // Stores the WebSocket connection.
-  //
-  // useRef is used because changing socketRef.current
-  // should not cause the component to render again.
+  // Stores the active WebSocket connection.
   const socketRef = useRef(null);
 
   // Stores the index of the assistant message
   // currently receiving streamed text.
-  //
-  // All incoming text_delta events are appended
-  // to this same message.
   const streamingMessageIndexRef = useRef(null);
+
+  // Stores the tool being used for the current response.
+  const currentToolRef = useRef(null);
 
   // Open the WebSocket connection when the page loads.
   useEffect(() => {
@@ -56,17 +48,12 @@ function App() {
       .replace("https://", "wss://");
 
     // Open the connection to the FastAPI WebSocket endpoint.
-    //
-    // The API token is sent as a query parameter because
-    // the browser WebSocket API cannot easily send a custom
-    // Authorization header.
     const socket = new WebSocket(
       `${websocketUrl}/ws/chat?token=${encodeURIComponent(
         apiToken
       )}`
     );
 
-    // Store the socket so sendMessage() can use it later.
     socketRef.current = socket;
 
     // Runs when the WebSocket connection is accepted.
@@ -77,20 +64,22 @@ function App() {
 
     // Runs whenever FastAPI sends a message.
     socket.onmessage = (event) => {
-      // WebSocket messages arrive as text.
-      // Convert the JSON text into a JavaScript object.
       const data = JSON.parse(event.data);
 
       console.log("WebSocket event:", data);
 
-      // The backend sends this event before it starts
-      // producing the answer.
+      // The backend sends this before it starts
+      // producing the response.
       if (data.type === "response_started") {
         setLoading(true);
         setStreaming(true);
 
+        // Reset the tool for the new response.
+        currentToolRef.current = null;
+
         // Add one empty assistant message.
-        // Future text_delta events will append text
+        //
+        // Incoming text_delta events will be appended
         // to this same message.
         setMessages((currentMessages) => {
           const newMessages = [
@@ -102,7 +91,6 @@ function App() {
             },
           ];
 
-          // Save the position of the empty assistant message.
           streamingMessageIndexRef.current =
             newMessages.length - 1;
 
@@ -112,8 +100,20 @@ function App() {
         return;
       }
 
-      // The backend sends one text_delta event
-      // for every streamed piece of text.
+      // Store the tool selected by GPT.
+      //
+      // The tool badge will be attached to the assistant
+      // message when the response completes.
+      if (data.type === "tool_started") {
+        console.log("Tool started:", data.tool);
+
+        currentToolRef.current = data.tool;
+
+        return;
+      }
+
+      // Append every streamed text chunk to the
+      // same assistant message.
       if (data.type === "text_delta") {
         setMessages((currentMessages) => {
           const updatedMessages = [...currentMessages];
@@ -121,7 +121,6 @@ function App() {
           const messageIndex =
             streamingMessageIndexRef.current;
 
-          // Safety check in case no streaming message exists.
           if (
             messageIndex === null ||
             !updatedMessages[messageIndex]
@@ -129,8 +128,6 @@ function App() {
             return currentMessages;
           }
 
-          // Copy the current assistant message
-          // and append the newest text chunk.
           updatedMessages[messageIndex] = {
             ...updatedMessages[messageIndex],
             text:
@@ -144,31 +141,40 @@ function App() {
         return;
       }
 
-      // The backend sends this after the final chunk.
+      // The backend sends this after the final text chunk.
       if (data.type === "response_completed") {
+        console.log("Response completed:", data);
+
         setMessages((currentMessages) => {
           const updatedMessages = [...currentMessages];
 
           const messageIndex =
             streamingMessageIndexRef.current;
 
-          // Add the tool badge to the same message
-          // that received the streamed text.
           if (
             messageIndex !== null &&
             updatedMessages[messageIndex]
           ) {
             updatedMessages[messageIndex] = {
               ...updatedMessages[messageIndex],
-              tool: data.tool,
+
+              // Prefer the tool included in
+              // response_completed.
+              //
+              // Fall back to the tool stored from
+              // the tool_started event.
+              tool:
+                data.tool ||
+                currentToolRef.current,
             };
           }
 
           return updatedMessages;
         });
 
-        // No more chunks will be added to this message.
+        // The current streamed response is finished.
         streamingMessageIndexRef.current = null;
+        currentToolRef.current = null;
 
         setStreaming(false);
         setLoading(false);
@@ -189,21 +195,25 @@ function App() {
         ]);
 
         streamingMessageIndexRef.current = null;
+        currentToolRef.current = null;
+
         setStreaming(false);
         setLoading(false);
       }
     };
 
-    // Runs if the browser encounters a socket error.
+    // Runs if the browser encounters a WebSocket error.
     socket.onerror = (error) => {
       console.error("WebSocket error:", error);
 
       streamingMessageIndexRef.current = null;
+      currentToolRef.current = null;
+
       setStreaming(false);
       setLoading(false);
     };
 
-    // Runs when the connection closes.
+    // Runs when the WebSocket connection closes.
     socket.onclose = (event) => {
       console.log(
         "WebSocket disconnected:",
@@ -212,12 +222,15 @@ function App() {
       );
 
       setConnected(false);
+
       streamingMessageIndexRef.current = null;
+      currentToolRef.current = null;
+
       setStreaming(false);
       setLoading(false);
     };
 
-    // Close the connection when this component is removed
+    // Close the connection when the component is removed
     // or when the page is refreshed.
     return () => {
       socket.close();
@@ -240,8 +253,8 @@ function App() {
 
     const socket = socketRef.current;
 
-    // Make sure the socket exists and is connected
-    // before trying to send a message.
+    // Make sure the WebSocket is connected
+    // before sending a message.
     if (
       !socket ||
       socket.readyState !== WebSocket.OPEN
@@ -270,10 +283,8 @@ function App() {
     setInput("");
     setLoading(true);
 
-    // WebSockets send text.
-    //
-    // JSON.stringify converts the JavaScript object
-    // into JSON text before sending it to FastAPI.
+    // Convert the JavaScript object into JSON text
+    // and send it through the WebSocket.
     socket.send(
       JSON.stringify({
         message: trimmedInput,
@@ -289,10 +300,9 @@ function App() {
   };
 
   const startNewChat = () => {
-    // Create a new application session.
+    // Create a new conversation session.
     //
     // The WebSocket connection itself stays open.
-    // Only the conversation session ID changes.
     setSessionId(`session-${Date.now()}`);
 
     setMessages([
@@ -303,6 +313,7 @@ function App() {
     ]);
 
     streamingMessageIndexRef.current = null;
+    currentToolRef.current = null;
 
     setInput("");
     setLoading(false);
@@ -399,7 +410,6 @@ function App() {
             </div>
           ))}
 
-          {/* Show thinking dots only before streaming begins. */}
           {loading && !streaming && (
             <div className="message-row agent-row">
               <div className="message agent-message thinking-message">
