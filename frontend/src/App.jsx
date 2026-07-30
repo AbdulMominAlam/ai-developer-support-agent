@@ -17,6 +17,12 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [connected, setConnected] = useState(false);
 
+  // Tracks whether text is currently being streamed.
+  //
+  // We use this to avoid showing the thinking dots
+  // underneath the streamed assistant message.
+  const [streaming, setStreaming] = useState(false);
+
   // Used to automatically scroll to the newest message.
   const messagesEndRef = useRef(null);
 
@@ -25,6 +31,13 @@ function App() {
   // useRef is used because changing socketRef.current
   // should not cause the component to render again.
   const socketRef = useRef(null);
+
+  // Stores the index of the assistant message
+  // currently receiving streamed text.
+  //
+  // All incoming text_delta events are appended
+  // to this same message.
+  const streamingMessageIndexRef = useRef(null);
 
   // Open the WebSocket connection when the page loads.
   useEffect(() => {
@@ -71,27 +84,95 @@ function App() {
       console.log("WebSocket event:", data);
 
       // The backend sends this event before it starts
-      // processing the user's message.
+      // producing the answer.
       if (data.type === "response_started") {
         setLoading(true);
+        setStreaming(true);
+
+        // Add one empty assistant message.
+        // Future text_delta events will append text
+        // to this same message.
+        setMessages((currentMessages) => {
+          const newMessages = [
+            ...currentMessages,
+            {
+              sender: "agent",
+              text: "",
+              tool: null,
+            },
+          ];
+
+          // Save the position of the empty assistant message.
+          streamingMessageIndexRef.current =
+            newMessages.length - 1;
+
+          return newMessages;
+        });
+
         return;
       }
 
-      // The backend currently sends the complete answer
-      // using this event.
+      // The backend sends one text_delta event
+      // for every streamed piece of text.
+      if (data.type === "text_delta") {
+        setMessages((currentMessages) => {
+          const updatedMessages = [...currentMessages];
+
+          const messageIndex =
+            streamingMessageIndexRef.current;
+
+          // Safety check in case no streaming message exists.
+          if (
+            messageIndex === null ||
+            !updatedMessages[messageIndex]
+          ) {
+            return currentMessages;
+          }
+
+          // Copy the current assistant message
+          // and append the newest text chunk.
+          updatedMessages[messageIndex] = {
+            ...updatedMessages[messageIndex],
+            text:
+              updatedMessages[messageIndex].text +
+              data.delta,
+          };
+
+          return updatedMessages;
+        });
+
+        return;
+      }
+
+      // The backend sends this after the final chunk.
       if (data.type === "response_completed") {
-        const agentMessage = {
-          sender: "agent",
-          text: data.answer,
-          tool: data.tool,
-        };
+        setMessages((currentMessages) => {
+          const updatedMessages = [...currentMessages];
 
-        setMessages((currentMessages) => [
-          ...currentMessages,
-          agentMessage,
-        ]);
+          const messageIndex =
+            streamingMessageIndexRef.current;
 
+          // Add the tool badge to the same message
+          // that received the streamed text.
+          if (
+            messageIndex !== null &&
+            updatedMessages[messageIndex]
+          ) {
+            updatedMessages[messageIndex] = {
+              ...updatedMessages[messageIndex],
+              tool: data.tool,
+            };
+          }
+
+          return updatedMessages;
+        });
+
+        // No more chunks will be added to this message.
+        streamingMessageIndexRef.current = null;
+
+        setStreaming(false);
         setLoading(false);
+
         return;
       }
 
@@ -107,6 +188,8 @@ function App() {
           },
         ]);
 
+        streamingMessageIndexRef.current = null;
+        setStreaming(false);
         setLoading(false);
       }
     };
@@ -115,6 +198,8 @@ function App() {
     socket.onerror = (error) => {
       console.error("WebSocket error:", error);
 
+      streamingMessageIndexRef.current = null;
+      setStreaming(false);
       setLoading(false);
     };
 
@@ -127,6 +212,8 @@ function App() {
       );
 
       setConnected(false);
+      streamingMessageIndexRef.current = null;
+      setStreaming(false);
       setLoading(false);
     };
 
@@ -215,8 +302,11 @@ function App() {
       },
     ]);
 
+    streamingMessageIndexRef.current = null;
+
     setInput("");
     setLoading(false);
+    setStreaming(false);
   };
 
   const formatToolName = (tool) => {
@@ -309,7 +399,8 @@ function App() {
             </div>
           ))}
 
-          {loading && (
+          {/* Show thinking dots only before streaming begins. */}
+          {loading && !streaming && (
             <div className="message-row agent-row">
               <div className="message agent-message thinking-message">
                 <span className="thinking-dot"></span>

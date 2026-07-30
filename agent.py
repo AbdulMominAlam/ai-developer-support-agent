@@ -515,3 +515,61 @@ async def process_message(
         ),
         "response_id": final_response.id,
     }
+
+
+async def process_message_stream_test(
+    user_message,
+):
+    """
+    Temporary OpenAI streaming test.
+
+    This function sends the user's message directly to OpenAI
+    without RAG, MCP tools, or PostgreSQL conversation memory.
+
+    It yields small event dictionaries as OpenAI generates text.
+    """
+
+    # Create a streaming Responses API request.
+    #
+    # stream=True tells OpenAI not to wait for the complete answer.
+    # Instead, OpenAI sends many events while generating.
+    stream = await client.responses.create(
+        model=MODEL_NAME,
+        instructions=(
+            "You are a concise developer support assistant."
+        ),
+        input=user_message,
+        stream=True,
+    )
+
+    # Keep track of the OpenAI response ID.
+    response_id = None
+
+    # Read each streaming event as it arrives.
+    async for event in stream:
+
+        # OpenAI sends this event when the response is created.
+        #
+        # We save its ID so conversation memory can be added later.
+        if event.type == "response.created":
+            response_id = event.response.id
+
+        # This event contains one small piece
+        # of the generated answer.
+        if event.type == "response.output_text.delta":
+            yield {
+                "type": "text_delta",
+                "delta": event.delta,
+            }
+
+        # This event means OpenAI finished generating.
+        if event.type == "response.completed":
+
+            # Use the completed response ID as the final value.
+            response_id = event.response.id
+
+            yield {
+                "type": "response_completed",
+                "tool": None,
+                "response_id": response_id,
+            }

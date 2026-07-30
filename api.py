@@ -1,3 +1,4 @@
+import asyncio
 import os
 import secrets
 
@@ -29,7 +30,10 @@ from fastapi.security import (
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from agent import process_message
+from agent import (
+    process_message,
+    process_message_stream_test,
+)
 from fastapi.middleware.cors import CORSMiddleware
 
 # Session functions are used to store and retrieve
@@ -74,11 +78,12 @@ app.add_middleware(
     allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],  
+    allow_headers=["*"],
 )
 
 
 # This function checks whether the provided API token is valid.
+#
 # This authentication function is used for normal HTTP routes.
 def verify_api_token(
     credentials: HTTPAuthorizationCredentials = Depends(
@@ -238,10 +243,11 @@ async def chat(
         ) from error
 
 
-# This is the new WebSocket chat endpoint.
+# This is the temporary WebSocket endpoint.
 #
-# Unlike a normal HTTP request, the WebSocket connection
-# stays open and can be used for multiple messages.
+# It does not call OpenAI yet.
+# It sends a fake answer one chunk at a time
+# so we can test whether React handles streaming correctly.
 @app.websocket("/ws/chat")
 async def websocket_chat(
     websocket: WebSocket,
@@ -287,6 +293,7 @@ async def websocket_chat(
         return
 
     # Accept the WebSocket connection.
+    #
     # The client and server can now send messages
     # to each other through the same open connection.
     await websocket.accept()
@@ -296,6 +303,7 @@ async def websocket_chat(
     try:
 
         # Keep waiting for new messages.
+        #
         # This loop allows one WebSocket connection
         # to process multiple chat messages.
         while True:
@@ -358,10 +366,10 @@ async def websocket_chat(
                 continue
 
             # Tell the React frontend that the backend
-            # has started processing the message.
+            # has started producing a response.
             #
-            # React can use this event to display
-            # the loading animation.
+            # React can create an empty agent message
+            # when it receives this event.
             await websocket.send_json(
                 {
                     "type": "response_started",
@@ -371,59 +379,24 @@ async def websocket_chat(
 
             try:
 
-                # Get the latest OpenAI response ID
-                # for this session.
+                # Temporary fake streaming response.
                 #
-                # This gives the agent access to
-                # previous messages in the conversation.
-                previous_response_id = (
-                    get_session_response_id(
-                        session_id
-                    )
-                )
-
-                # Send the user's message to the agent.
+                # We are not calling process_message()
+                # or OpenAI in this temporary version.
                 #
-                # process_message() still returns
-                # one complete response for now.
-                #
-                # We will add OpenAI streaming later.
-                result = await process_message(
+                # Each item in this list represents
+                # one piece of the final answer.
+                # Receive real streaming events from OpenAI.
+                async for stream_event in process_message_stream_test(
                     user_message=message,
-                    previous_response_id=(
-                        previous_response_id
-                    ),
-                )
+                ):
 
-                # Save the newest OpenAI response ID
-                # so the next message has conversation memory.
-                save_session_response_id(
-                    session_id=session_id,
-                    response_id=(
-                        result["response_id"]
-                    ),
-                )
+                    # Add the application session ID
+                    # before forwarding the event to React.
+                    stream_event["session_id"] = session_id
 
-                # Send the complete result back
-                # through the WebSocket.
-                #
-                # For now, the answer is sent all at once.
-                #
-                # Later, this will be replaced with
-                # multiple "text_delta" events.
-                await websocket.send_json(
-                    {
-                        "type": (
-                            "response_completed"
-                        ),
-                        "answer": result["answer"],
-                        "tool": result.get("tool"),
-                        "response_id": (
-                            result["response_id"]
-                        ),
-                        "session_id": session_id,
-                    }
-                )
+                    # Send each OpenAI event through the WebSocket.
+                    await websocket.send_json(stream_event)
 
             except Exception as error:
 
