@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import asyncio
 
 from openai import OpenAI
 
@@ -9,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from config import MODEL_NAME, OPENAI_API_KEY
-from rag.retriever import retrieve_documents
+from agent_service.rag_client import retrieve_documents_from_service
 
 
 def build_context(retrieved_chunks):
@@ -31,23 +32,19 @@ Source: {chunk["source"]}
     return context
 
 
-def answer_question(question):
+async def answer_question(question):
     """
     Retrieve relevant chunks and ask GPT to answer
     using only those chunks.
     """
 
-    # Retrieve 6 chunks because some answers may be spread
-    # across multiple sections of the documentation.
-    retrieved_chunks = retrieve_documents(
-        question,
+    retrieved_chunks = await retrieve_documents_from_service(
+        question=question,
         top_k=6,
     )
 
-    # Combine all retrieved chunks into one context string
     context = build_context(retrieved_chunks)
 
-    # Build the instructions and context sent to the LLM
     prompt = f"""
 You are a Supabase documentation support assistant.
 
@@ -77,32 +74,28 @@ User question:
 {question}
 """
 
-    # Create the OpenAI client
     client = OpenAI(
         api_key=OPENAI_API_KEY
     )
 
-    # Send the prompt through the OpenAI Responses API
     response = client.responses.create(
         model=MODEL_NAME,
         input=prompt,
     )
 
-    # Return only the generated answer text
     return response.output_text
 
 
-def main():
+async def main():
     question = input(
         "Ask a Supabase documentation question: "
     )
 
-    answer = answer_question(question)
+    answer = await answer_question(question)
 
     print("\n--- Answer ---\n")
     print(answer)
 
 
-# Only run main() when this file is executed directly.
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

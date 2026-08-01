@@ -268,14 +268,10 @@ async def run_tool(tool_name, arguments): #routing logic
 
     if tool_name == "search_documentation":
 
-        # answer_question() is currently a normal synchronous function.
-        #
-        # asyncio.to_thread() runs it in a separate thread so that
-        # it does not block our asynchronous agent.
-        return await asyncio.to_thread(
-            answer_question,
-            arguments["question"],
-        )
+   
+        return await answer_question(
+        arguments["question"]
+    )
 
     if tool_name == "get_account":
 
