@@ -3,6 +3,7 @@ import json
 
 from openai import AsyncOpenAI
 
+from support_service.producer import publish_support_ticket
 from config import MODEL_NAME, OPENAI_API_KEY
 from rag.answer import answer_question
 from clients.mcp_client import call_mcp_tool
@@ -286,16 +287,17 @@ async def run_tool(tool_name, arguments): #routing logic
 
     if tool_name == "create_support_ticket":
 
-        # Call the ticket creation tool through
-        # our custom Developer Support MCP Server.
-        return await call_mcp_tool(
-            "create_support_ticket",
-            {
-                "account_id": arguments["account_id"],
-                "category": arguments["category"],
-                "description": arguments["description"],
-            },
+    # Send the ticket request to RabbitMQ.
+    # The agent does not create the ticket directly anymore.
+    # The support worker will receive this message
+    # and call the MCP create_support_ticket tool.
+        publish_result = publish_support_ticket(
+            account_id=arguments["account_id"],
+            category=arguments["category"],
+            description=arguments["description"],
         )
+
+    return publish_result
 
     if tool_name == "search_github_repositories":
 

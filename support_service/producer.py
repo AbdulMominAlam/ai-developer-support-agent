@@ -1,9 +1,11 @@
 import json
+
 import pika
 
 
-# Name of the RabbitMQ queue.
-# Both the producer and worker must use the same queue name.
+# Queue name.
+# Both the producer and worker must use
+# exactly the same queue name.
 QUEUE_NAME = "support_ticket_queue"
 
 
@@ -13,7 +15,8 @@ def publish_support_ticket(
     description: str,
 ):
     """
-    Send a support ticket request to RabbitMQ.
+    Send a support ticket request
+    to RabbitMQ.
     """
 
     # Connect to the local RabbitMQ server.
@@ -26,37 +29,61 @@ def publish_support_ticket(
     # Create a communication channel.
     channel = connection.channel()
 
-    # Create the queue if it does not already exist.
+    # Create the queue if it does not exist.
+    #
+    # durable=True means the queue survives
+    # RabbitMQ restarts.
     channel.queue_declare(
         queue=QUEUE_NAME,
         durable=True,
     )
 
-    # Build the message that will be sent.
+    # Build the message that will be sent
+    # to the support worker.
     message = {
         "account_id": account_id,
         "category": category,
         "description": description,
     }
 
-    # Publish the message to the queue.
+    # Send the message to RabbitMQ.
+    #
+    # delivery_mode=2 marks the message
+    # as persistent so RabbitMQ stores it
+    # on disk.
     channel.basic_publish(
         exchange="",
         routing_key=QUEUE_NAME,
         body=json.dumps(message),
+        properties=pika.BasicProperties(
+            delivery_mode=2,
+        ),
     )
-
-    print("Support ticket request sent.")
 
     # Close the RabbitMQ connection.
     connection.close()
+
+    # Return a response back to the agent.
+    #
+    # The ticket has not been created yet.
+    # It has only been placed into the queue.
+    return {
+        "success": True,
+        "status": "queued",
+        "message": (
+            "The support ticket request was "
+            "added to the processing queue."
+        ),
+    }
 
 
 # Run this file directly for testing.
 if __name__ == "__main__":
 
-    publish_support_ticket(
+    result = publish_support_ticket(
         account_id="ACC-1001",
         category="Authentication",
         description="Password reset email not arriving.",
     )
+
+    print(result)
