@@ -57,8 +57,7 @@ Unlike a traditional chatbot, the project separates responsibilities across mult
 
 ## System Architecture
 
-\`\`\`
-                    React Frontend
+                   React Frontend
                            │
                   WebSocket / HTTP
                            │
@@ -76,7 +75,7 @@ Unlike a traditional chatbot, the project separates responsibilities across mult
                      │
                      ▼
               PostgreSQL (Neon)
-\`\`\`
+
 
 ## Key Design Decisions
 
