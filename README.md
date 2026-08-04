@@ -57,7 +57,8 @@ Unlike a traditional chatbot, the project separates responsibilities across mult
 
 ## System Architecture
 
-                   React Frontend
+```
+                    React Frontend
                            │
                   WebSocket / HTTP
                            │
@@ -75,7 +76,7 @@ Unlike a traditional chatbot, the project separates responsibilities across mult
                      │
                      ▼
               PostgreSQL (Neon)
-
+```
 
 ## Key Design Decisions
 
@@ -150,7 +151,7 @@ Each service has a single responsibility and communicates using the most appropr
 
 ## Project Structure
 
-\`\`\`
+```
 developer-support-agent/
 ├── frontend/
 ├── rag/
@@ -173,36 +174,36 @@ developer-support-agent/
 ├── sessions.py
 ├── tools.py
 └── config.py
-\`\`\`
+```
 
 ## Running the Project
 
 **Install dependencies**
-\`\`\`bash
+```bash
 pip install -r requirements.txt
-\`\`\`
+```
 
 **Start the Agent API**
-\`\`\`bash
+```bash
 uvicorn api:app --reload
-\`\`\`
+```
 
 **Start the RAG Service**
-\`\`\`bash
+```bash
 uvicorn rag_service.main:app --port 8002 --reload
-\`\`\`
+```
 
 **Start the RabbitMQ Worker**
-\`\`\`bash
+```bash
 python -m support_service.worker
-\`\`\`
+```
 
 **Start the Frontend**
-\`\`\`bash
+```bash
 cd frontend
 npm install
 npm run dev
-\`\`\`
+```
 
 ## Example Prompts
 
