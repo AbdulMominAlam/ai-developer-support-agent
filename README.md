@@ -1,277 +1,310 @@
-# AI Developer Support Agent
+AI Developer Support Agent
 
-An AI-powered Developer Support Agent built using the OpenAI Responses API, Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP), FastAPI, PostgreSQL, and React.
+Production-inspired AI Developer Support Platform built with theOpenAI Responses API, RAG, MCP, FastAPI, RabbitMQ,WebSockets, PostgreSQL, and React.
 
-The application assists developers by answering documentation questions, retrieving customer account information, creating support tickets, and interacting with GitHub repositories through MCP tools. It supports persistent multi-turn conversations using PostgreSQL-backed session memory and provides a web-based chat interface for demonstration.
+Overview
 
----
+The AI Developer Support Agent is an end-to-end support platform thatcombines large language models with modern backend architecture. Theapplication answers documentation questions using Retrieval-AugmentedGeneration (RAG), retrieves developer account information, createssupport tickets, and interacts with GitHub repositories through theModel Context Protocol (MCP).
 
-## Features
+Unlike a traditional chatbot, the project separates responsibilitiesacross multiple services. Documentation retrieval is handled by adedicated RAG microservice, support ticket creation is processedasynchronously using RabbitMQ, and AI responses are streamed to thefrontend in real time using WebSockets.
 
-- Multi-turn AI conversations using the OpenAI Responses API
-- Retrieval-Augmented Generation (RAG) using ChromaDB
-- Documentation question answering using Supabase documentation
-- MCP integration with custom developer support tools
-- GitHub MCP integration for repository, issue, and file operations
-- PostgreSQL (Neon) database for persistent account, ticket, and session storage
-- Session-based conversation memory
-- Bearer Token Authentication
-- FastAPI REST API
-- React frontend for interacting with the AI agent
-- API testing with Postman
+Features
 
----
+Multi-turn conversations using the OpenAI Responses API
 
-## Tech Stack
+Real-time streaming responses using WebSockets
 
-### Frontend
+Retrieval-Augmented Generation (RAG)
 
-- React
-- Vite
-- Axios
+Dedicated FastAPI RAG microservice
 
-### Backend
+ChromaDB vector database
 
-- Python
-- FastAPI
-- OpenAI Responses API
-- PostgreSQL (Neon)
-- Psycopg
-- MCP Python SDK
+OpenAI Embeddings
 
-### AI
+Custom Developer Support MCP Server
 
-- GPT (OpenAI Responses API)
-- Retrieval-Augmented Generation (RAG)
-- ChromaDB
-- LangChain
-- Embeddings
+GitHub Official MCP Server integration
 
-### MCP Servers
+RabbitMQ-based asynchronous support ticket processing
 
-- Custom Developer Support MCP Server
-- GitHub Official MCP Server
+Background support worker
 
----
+PostgreSQL (Neon) for accounts, tickets and session memory
 
-# Project Architecture
+Session-based conversation memory
 
-                                USER
-                                  │
-                                  ▼
-                       React Frontend (Vite)
-                                  │
-                           Axios HTTP Request
-                                  │
-                                  ▼
-                      FastAPI Backend (api.py)
-                                  │
-                    Bearer Token Authentication
-                                  │
-                                  ▼
-                       process_message() (agent.py)
-                                  │
-                ┌─────────────────┴─────────────────┐
-                │                                   │
-                ▼                                   ▼
-      PostgreSQL Session Memory          OpenAI Responses API
-      (session_id → response_id)                 (GPT)
-                │                                   │
-                │                                   │
-                └──────────────┬────────────────────┘
-                               │
-                     GPT decides whether
-                     external tools are needed
-                               │
-          ┌────────────────────┴─────────────────────┐
-          │                                          │
-          ▼                                          ▼
-     Documentation Search                    GitHub / Support Tools
-        (RAG Pipeline)                         (MCP Servers)
-          │                                          │
-          ▼                                          ▼
-      ChromaDB Vector DB                  GitHub MCP Server
-          │                               Developer Support MCP
-          │                                          │
-          ▼                                          ▼
-  Relevant Document Chunks              PostgreSQL (Accounts/Tickets)
-          │                                          │
-          └────────────────────┬─────────────────────┘
-                               │
-                               ▼
-                   OpenAI generates final response
-                               │
-                               ▼
-                  Save latest response_id to PostgreSQL
-                               │
-                               ▼
-                    Return response to React UI
+Bearer Token Authentication
 
----
+React + Vite frontend
 
-## Project Structure
+REST API testing with Postman
 
-```
+Tech Stack
+
+Frontend
+
+React
+
+Vite
+
+Axios
+
+Backend
+
+Python
+
+FastAPI
+
+WebSockets
+
+RabbitMQ
+
+HTTPX
+
+PostgreSQL (Neon)
+
+Psycopg
+
+AI
+
+OpenAI Responses API
+
+GPT
+
+Retrieval-Augmented Generation (RAG)
+
+ChromaDB
+
+LangChain
+
+OpenAI Embeddings
+
+Tool Integration
+
+Model Context Protocol (MCP)
+
+Custom Developer Support MCP Server
+
+GitHub Official MCP Server
+
+System Architecture
+
+                    React Frontend
+                           │
+                  WebSocket / HTTP
+                           │
+                    FastAPI Agent
+        ┌────────────┼─────────────┐
+        │            │             │
+        ▼            ▼             ▼
+   RAG Service   RabbitMQ     GitHub MCP
+      HTTP          │
+        │           ▼
+        ▼      Support Worker
+   ChromaDB         │
+                    ▼
+        Developer Support MCP
+                    │
+                    ▼
+             PostgreSQL (Neon)
+
+Key Design Decisions
+
+Technology                    Why it was used
+
+WebSockets                    Stream AI responses to the frontend inreal time instead of waiting for thecomplete response.
+
+HTTP                          Communication between the Agent and RAGservice because documentation retrievalis needed immediately before GPT cananswer.
+
+RabbitMQ                      Queue background support-ticket creationso the chatbot remains responsive underload.
+
+MCP                           Standard interface for custom developertools and GitHub tools.
+
+PostgreSQL                    Persistent storage for accounts, ticketsand conversation sessions.
+
+How It Works
+
+1. User Request
+
+The user sends a message from the React frontend.
+
+The frontend communicates with the FastAPI backend through HTTP andWebSockets. WebSockets stream AI responses token-by-token while HTTP isused for standard API communication.
+
+2. Agent
+
+The FastAPI backend forwards the request to the OpenAI Responses APItogether with:
+
+System prompt
+
+Previous conversation (response_id)
+
+Available tools
+
+GPT decides whether a tool is required.
+
+3. Documentation Questions
+
+If documentation is needed:
+
+The Agent sends an HTTP request to the dedicated RAG microservice.
+
+The RAG service generates an embedding for the user's question.
+
+ChromaDB retrieves the most relevant document chunks.
+
+Those chunks are returned to the Agent.
+
+GPT generates an answer grounded only in the retrieveddocumentation.
+
+The RAG logic is isolated inside its own service, allowing it to bedeveloped, deployed and scaled independently.
+
+4. Support Ticket Creation
+
+If the user requests a support ticket:
+
+The Agent publishes a message to RabbitMQ.
+
+RabbitMQ stores the request in a durable queue.
+
+A background worker consumes the message.
+
+The worker calls the Developer Support MCP Server.
+
+The MCP Server creates the support ticket in PostgreSQL.
+
+Using RabbitMQ allows ticket creation to happen asynchronously withoutblocking the chatbot.
+
+5. Account Lookup
+
+Account lookups are performed through the custom Developer Support MCPServer.
+
+Since the Agent requires the result immediately, this communicationremains synchronous instead of using RabbitMQ.
+
+6. GitHub Operations
+
+Repository search, issue retrieval and file reading are handled throughGitHub's Official MCP Server.
+
+7. Conversation Memory
+
+Conversation memory is stored in PostgreSQL.
+
+Each session stores the latest OpenAI response_id, allowing the OpenAIResponses API to continue conversations without the frontend managingmessage history.
+
+Microservice Architecture
+
+The application follows a hybrid microservice architecture.
+
+Agent Service -- Coordinates the conversation and toolexecution.
+
+RAG Service -- Dedicated FastAPI microservice responsible fordocument retrieval.
+
+Support Worker -- Background worker responsible for processingRabbitMQ ticket requests.
+
+Developer Support MCP Server -- Provides account lookup andticket creation tools.
+
+GitHub MCP Server -- Provides GitHub repository tools.
+
+Each service has a single responsibility and communicates using the mostappropriate mechanism:
+
+HTTP → synchronous request/response
+
+RabbitMQ → asynchronous background processing
+
+MCP → standardized tool execution
+
+WebSockets → real-time frontend streaming
+
+Project Structure
+
 developer-support-agent/
 
-├── frontend/                 # React frontend
-│
+├── frontend/
 ├── rag/
 │   ├── ingest.py
 │   ├── retriever.py
 │   └── answer.py
-│
+├── rag_service/
+│   └── main.py
+├── support_service/
+│   ├── producer.py
+│   └── worker.py
 ├── clients/
+│   ├── rag_client.py
 │   ├── mcp_client.py
 │   └── github_mcp_client.py
-│
 ├── mcp_servers/
-│   └── developer_support_server.py
-│
 ├── api.py
 ├── agent.py
-├── tools.py
 ├── database.py
 ├── sessions.py
-├── import_data.py
-├── setup_database.py
-├── config.py
-└── main.py
-```
+├── tools.py
+└── config.py
 
----
+Running the Project
 
-# How It Works
+Install
 
-The application begins in the React frontend, where the user enters a query through the chat interface. The frontend sends the user's message and session ID to the FastAPI `/chat` endpoint using Axios.
-
-FastAPI first authenticates the request using a Bearer Token. It then retrieves the latest OpenAI `response_id` associated with the provided session from PostgreSQL before passing the user's message and previous response ID to `process_message()` in `agent.py`.
-
-`process_message()` sends the user's prompt, system instructions, conversation history, and available tools to the OpenAI Responses API. GPT first determines whether it can answer directly or whether one or more tools are required.
-
-If documentation is needed, GPT calls the `search_documentation` tool. The request is routed through `rag/answer.py`, which retrieves relevant document chunks from ChromaDB using LangChain before generating an answer grounded in the retrieved documentation.
-
-If account or ticket information is required, GPT calls the custom Developer Support MCP Server. The MCP server executes SQL queries against PostgreSQL to retrieve account information or create new support tickets.
-
-If GitHub information is required, GPT calls one of the GitHub MCP tools, which communicate with GitHub's official MCP Server to retrieve repositories, issues, or file contents.
-
-After the required tools return their results, `agent.py` sends those results back to the OpenAI Responses API in a second request. GPT combines the retrieved information with the user's original request to generate a final natural-language response.
-
-The API then stores the newest OpenAI `response_id` in PostgreSQL, allowing future requests within the same session to continue the conversation with full context. Finally, the completed response is returned to the React frontend and displayed to the user.
-
----
-
-# Session-Based Conversation Memory
-
-Conversation memory is managed entirely by the backend using PostgreSQL.
-
-Each conversation is assigned a unique session ID. The backend stores the latest OpenAI response ID associated with that session in a dedicated `sessions` table. For every new request, FastAPI retrieves the stored response ID and passes it to the OpenAI Responses API, allowing GPT to continue the existing conversation without requiring the frontend to manage conversation history.
-
-Selecting **New Chat** creates a brand-new session ID, resulting in a completely independent conversation with no previous context.
-
----
-
-# PostgreSQL Integration
-
-The application uses PostgreSQL (Neon) instead of JSON files for persistent data storage.
-
-Three database tables are used:
-
-- `accounts`
-- `tickets`
-- `sessions`
-
-Account lookups, support ticket creation, and conversation session management are all performed using SQL queries, providing a scalable and production-oriented backend.
-
----
-
-# Authentication
-
-All API endpoints are protected using Bearer Token Authentication.
-
-Every request must include:
-
-```
-Authorization: Bearer <API_TOKEN>
-```
-
-FastAPI validates the token before processing any request.
-
----
-
-# Running the Project
-
-## Backend
-
-```bash
 pip install -r requirements.txt
 
+Start the Agent API
+
 uvicorn api:app --reload
-```
 
----
+Start the RAG Service
 
-## Frontend
+uvicorn rag_service.main:app --port 8002 --reload
 
-```bash
+Start the RabbitMQ Worker
+
+python -m support_service.worker
+
+Start the Frontend
+
 cd frontend
-
 npm install
-
 npm run dev
-```
 
----
+Example Prompts
 
-# Example Prompts
+Documentation
 
-### Account Lookup
-
-```
-Who is account ACC-1001?
-```
-
-### Follow-up Conversation
-
-```
-How many API calls does that account have remaining?
-```
-
-### Documentation
-
-```
 How do users reset their password?
-```
 
-### Support Ticket
+Account Lookup
 
-```
-Create a support ticket for ACC-1001 because the API is returning 500 errors.
-```
+Who is account ACC-1001?
 
-### GitHub
+Support Ticket
 
-```
-List the open issues in the repository.
-```
+Create a support ticket for ACC-1001 because password reset emails are not arriving.
 
----
+GitHub
 
-# Future Improvements
+List the open issues for the repository.
 
-- Streaming responses from the OpenAI Responses API
-- User authentication and login system
-- Conversation history management
-- Docker deployment
-- Cloud deployment
-- Additional MCP server integrations
-- Improved UI/UX
-- Analytics dashboard
+Future Improvements
 
----
+Dockerize each microservice
 
-# Author
+Kubernetes deployment
+
+Redis caching
+
+Multiple RabbitMQ workers
+
+Request-reply RabbitMQ messaging
+
+Additional MCP server integrations
+
+CI/CD with GitHub Actions
+
+Prometheus & Grafana monitoring
+
+Cloud deployment
+
+Author
 
 Abdul Momin Alam
 
-Built as part of an AI Engineering Internship project focused on Agentic AI, Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP), OpenAI Responses API, FastAPI, PostgreSQL, and React.
+Built as part of an AI Engineering Internship focused on Agentic AI,Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP),OpenAI Responses API, FastAPI, RabbitMQ, WebSockets, PostgreSQL andReact.
