@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys
-
+from sql_agent.agent import run_sql_agent
 from mcp.server.fastmcp import FastMCP
 
 
@@ -17,19 +17,20 @@ mcp = FastMCP("Developer Support Server")
 
 
 @mcp.tool()
-def get_account(account_id: str) -> dict: #tells mcp that tool returns a dictionary and input must be string
+def query_support_database(question: str) -> dict:
     """
-    Look up a developer account using its account ID.
+    Answer questions about developer accounts and support tickets.
 
-    Use this tool when the user asks about:
+    Use this tool for:
     - account details
-    - subscription plan
-    - account status
+    - account plans and status
     - API usage
+    - support ticket history
+    - ticket counts and summaries
     """
 
-    # Call our existing Python function
-    return lookup_account(account_id)
+    # Send the natural-language question to the SQL agent.
+    return run_sql_agent(question)
 
 
 @mcp.tool()
