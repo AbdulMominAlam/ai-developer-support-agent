@@ -1,3 +1,8 @@
+"""
+Stores the prompt used to make the LLM generate PostgreSQL queries.
+"""
+
+# The schema and user question are inserted into the placeholders below.
 SQL_GENERATION_PROMPT = """
 You are a PostgreSQL SQL agent.
 
