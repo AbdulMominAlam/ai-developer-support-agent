@@ -24,5 +24,6 @@ Rules:
 - Never generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, or TRUNCATE.
 - Add LIMIT 50 when returning multiple rows.
 - Return only the SQL query.
+- Avoid using SELECT *. Explicitly list the required columns.
 - Do not use Markdown code fences.
 """

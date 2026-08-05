@@ -9,7 +9,7 @@ which tables and columns exist when generating SQL.
 ALLOWED_SCHEMA = """
 Database type: PostgreSQL
 
-Table: developer_accounts
+Table: accounts
 - account_id: varchar, primary key
 - name: varchar
 - email: varchar
@@ -18,7 +18,7 @@ Table: developer_accounts
 - monthly_api_calls_used: integer
 - monthly_api_call_limit: integer
 
-Table: support_tickets
+Table: tickets
 - ticket_id: varchar, primary key
 - account_id: varchar, foreign key
 - category: varchar
