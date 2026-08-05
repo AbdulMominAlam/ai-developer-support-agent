@@ -114,6 +114,17 @@ async def test_client():
 
     print(account_result)
 
+    print("\nTesting query_support_database...\n")
+
+    query_result = await call_mcp_tool(
+        "query_support_database",
+        {
+            "question": "How many support tickets does account ACC-1001 have?"
+        },
+    )
+
+    print(query_result)
+
     print("\nTesting create_support_ticket...\n")
 
     ticket_result = await call_mcp_tool(
