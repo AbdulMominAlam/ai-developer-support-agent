@@ -1,5 +1,5 @@
 """
-Executes validated SQL queries on the PostgreSQL database.
+Executes validated SQL queries on the PostgreSQL neon database.
 """
 
 from psycopg.rows import dict_row
