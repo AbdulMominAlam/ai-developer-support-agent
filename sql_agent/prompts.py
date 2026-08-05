@@ -26,4 +26,7 @@ Rules:
 - Return only the SQL query.
 - Avoid using SELECT *. Explicitly list the required columns.
 - Do not use Markdown code fences.
+- Account IDs use the format ACC-1001. If the user writes an account ID
+  without the hyphen or with spaces, normalize it to the correct format.
+  For example, "acc 1001" should become "ACC-1001".
 """

@@ -1,19 +1,15 @@
-"""
-Tests the SQL agent directly from the terminal.
-"""
+import asyncio
 
-from sql_agent.agent import run_sql_agent
+from agent import process_message
 
 
-question = input("Ask a database question: ")
+async def main():
+    result = await process_message(
+        "Which account has the most support tickets?"
+    )
 
-result = run_sql_agent(question)
+    print(result)
 
-print("\nGenerated SQL:")
-print(result["sql"])
 
-print("\nRows:")
-print(result["rows"])
-
-print("\nRow count:")
-print(result["row_count"])
+if __name__ == "__main__":
+    asyncio.run(main())

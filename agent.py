@@ -1,3 +1,4 @@
+from ast import arguments
 import asyncio
 import json
 
@@ -38,7 +39,11 @@ Tool rules:
   search_documentation before answering.
 - Never answer a Supabase documentation question from general knowledge.
 - Base the final answer only on the result returned by search_documentation.
-- Use get_account for account-specific information.
+- Use query_support_database for questions about developer accounts,
+  account plans, account status, API usage, support tickets, ticket counts,
+  ticket history, or database summaries.
+- Use create_support_ticket only when the user clearly asks to
+  create, open, or submit a support ticket.
 - Use create_support_ticket only when the user clearly asks to
   create, open, or submit a support ticket.
 - Use search_github_repositories when the user wants to search
@@ -90,23 +95,24 @@ TOOLS = [
     },
     {
         "type": "function",
-        "name": "get_account",
+        "name": "query_support_database",
         "description": (
-            "Look up a developer account. Use this when the user asks "
-            "about an account's name, plan, status, monthly API usage, "
-            "or API usage limit."
+            "Answer questions about developer accounts and support tickets "
+            "by generating and executing a read-only SQL query. "
+            "Use this for account details, plans, status, API usage, "
+            "ticket history, ticket counts, and database summaries."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "account_id": {
+                "question": {
                     "type": "string",
                     "description": (
-                        "The account ID, such as ACC-1001."
+                        "The user's complete natural-language database question."
                     ),
                 }
             },
-            "required": ["account_id"],
+            "required": ["question"],
             "additionalProperties": False,
         },
     },
@@ -273,15 +279,16 @@ async def run_tool(tool_name, arguments): #routing logic
         return await answer_question(
         arguments["question"]
     )
+            
 
-    if tool_name == "get_account":
+    if tool_name == "query_support_database":
 
-        # Call the get_account tool through
-        # our custom Developer Support MCP Server.
+    # Send the complete database question to the SQL agent
+    # through the Developer Support MCP Server.
         return await call_mcp_tool(
-            "get_account",
+            "query_support_database",
             {
-                "account_id": arguments["account_id"]
+                "question": arguments["question"]
             },
         )
 
@@ -297,7 +304,9 @@ async def run_tool(tool_name, arguments): #routing logic
             description=arguments["description"],
         )
 
-    return publish_result
+        return publish_result
+
+    
 
     if tool_name == "search_github_repositories":
 
