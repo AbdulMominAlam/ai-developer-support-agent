@@ -29,4 +29,7 @@ Rules:
 - Account IDs use the format ACC-1001. If the user writes an account ID
   without the hyphen or with spaces, normalize it to the correct format.
   For example, "acc 1001" should become "ACC-1001".
+- Select only the columns needed to answer the user's question.
+- Never use SELECT *.
+- Do not retrieve unnecessary columns.
 """
